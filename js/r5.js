@@ -45,6 +45,7 @@ export function initR5(H) {
   const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
   const hhmm = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
   const smallArt = (id) => (H.ART[id] || '');
+  const EVI = { pod: 'whale', migr: 'jelly', meteor: 'meteor' };
   const S = () => H.save;
   const ui = { photo: false, sleep: null, visit: null, pet: 0, care: null, petCap: {}, feedT: {} };
   const ctxLite = { threats: [], food: null, schoolC: null, avoid: null };
@@ -249,21 +250,21 @@ export function initR5(H) {
   function onEventSeen(id) {
     if (H.ST.mode !== 'play') { ui.evPending = id; return; }
     const st = stats(), dk = dayKey(); if (!st.ev || st.ev.d !== dk) st.ev = { d: dk, s: [] };
-    if (!st.ev.s.includes(id)) { st.ev.s.push(id); S().pearls += 15; H.setPearls(true); q('event1'); T(t('ev_' + id), t('evArrived') + ' +15', PIC.ic(id, pearlN(15, '+'), 'ev ' + id)); H.audio.chime(); save(); }
+    if (!st.ev.s.includes(id)) { st.ev.s.push(id); S().pearls += 15; H.setPearls(true); q('event1'); T(t('ev_' + id), t('evArrived') + ' +15', PIC.ic(EVI[id], pearlN(15, '+'), 'ev ' + id)); H.audio.chime(); save(); }
   }
   function renderBanner() {
     const live = liveEvents(), b = $('evBanner'); $('railEv').classList.toggle('dot', live.length > 0);
     if (!live.length || ui.photo || ui.sleep || ui.visit || H.ST.mode !== 'play' || H.ST.mg) { b.classList.add('hidden'); return; }
     const e = live[0]; b.classList.remove('hidden');
-    $('evText').innerHTML = `<span class="evIc2 ${e.id}">${ic(e.id, 'big')}</span>` + (e.s !== null ? `<span class="evT">${ic('clock')}<b>${hhmm(e.e)}</b></span>` : ''); b.setAttribute('aria-label', t('ev_' + e.id) + (e.s !== null ? ` · ${t('evUntil')} ${hhmm(e.e)}` : ''));
+    $('evText').innerHTML = `<span class="evIc2 ${e.id}">${ic(EVI[e.id], 'big')}</span>` + (e.s !== null ? `<span class="evT">${ic('clock')}<b>${hhmm(e.e)}</b></span>` : ''); b.setAttribute('aria-label', t('ev_' + e.id) + (e.s !== null ? ` · ${t('evUntil')} ${hhmm(e.e)}` : ''));
     $('evWatch').onclick = () => watchEvent(e.id);
   }
   function watchEvent(id) { H.closeSheets(); H.stopFollow(); const c = H.cam; c.home = false; c.idle = -20; ui.watch = id; if (id === 'pod') { c.tTarget.set(0, 13, 0); c.tDist = 30; c.tPitch = -0.12; } else if (id === 'migr') { c.tTarget.set(0, 9, 0); c.tDist = 24; c.tPitch = 0.05; } else { c.tTarget.set(0, 16, 0); c.tDist = 22; c.tPitch = -0.15; } }
   function renderEvents() {
     const live = liveEvents(), box = $('evList'); box.innerHTML = '';
     const md = (d) => `${d.getMonth() + 1}.${d.getDate()}`;
-    if (live.length) box.insertAdjacentHTML('beforeend', live.map((e) => `<div class="evRow live" aria-label="${t('ev_' + e.id)} — ${t('ev_' + e.id + '_d')}"><span class="evIc2 big ${e.id}">${ic(e.id, 'big')}</span><span class="liveDot"></span><div class="evWhen">${e.s !== null ? `${ic('clock')}<b>${hhmm(e.s)}–${hhmm(e.e)}</b>` : ''}</div><button class="mini round" data-ev="${e.id}" aria-label="${t('evWatchBtn')}">${ic('eye')}</button></div>`).join(''));
-    box.insertAdjacentHTML('beforeend', `<div class="hubSep">${ic('cal')}</div>` + upcoming(8).map((e) => `<div class="evRow" aria-label="${t('ev_' + e.id)} ${fmtDay(e.s)} ${fmtTime(e.s)}–${fmtTime(e.e)}"><span class="evIc2 ${e.id}">${ic(e.id, 'big')}</span><div class="evWhen"><b class="md">${md(e.s)}</b>${ic('clock')}<b>${hhmm(e.s.getHours() * 60 + e.s.getMinutes())}–${hhmm(e.e.getHours() * 60 + e.e.getMinutes() || 1440)}</b></div><span class="evRw">${pearlN(15, '+')}</span></div>`).join(''));
+    if (live.length) box.insertAdjacentHTML('beforeend', live.map((e) => `<div class="evRow live" aria-label="${t('ev_' + e.id)} — ${t('ev_' + e.id + '_d')}"><span class="evIc2 big ${e.id}">${ic(EVI[e.id], 'big')}</span><span class="liveDot"></span><div class="evWhen">${e.s !== null ? `${ic('clock')}<b>${hhmm(e.s)}–${hhmm(e.e)}</b>` : ''}</div><button class="mini round" data-ev="${e.id}" aria-label="${t('evWatchBtn')}">${ic('eye')}</button></div>`).join(''));
+    box.insertAdjacentHTML('beforeend', `<div class="hubSep">${ic('cal')}</div>` + upcoming(8).map((e) => `<div class="evRow" aria-label="${t('ev_' + e.id)} ${fmtDay(e.s)} ${fmtTime(e.s)}–${fmtTime(e.e)}"><span class="evIc2 ${e.id}">${ic(EVI[e.id], 'big')}</span><div class="evWhen"><b class="md">${md(e.s)}</b>${ic('clock')}<b>${hhmm(e.s.getHours() * 60 + e.s.getMinutes())}–${hhmm(e.e.getHours() * 60 + e.e.getMinutes() || 1440)}</b></div><span class="evRw">${pearlN(15, '+')}</span></div>`).join(''));
     box.querySelectorAll('[data-ev]').forEach((b) => b.onclick = () => watchEvent(b.dataset.ev));
   }
 
@@ -363,7 +364,7 @@ export function initR5(H) {
   // ---------- public aquarium, friends & visits ----------
   const CODE_AB = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   function myCode() { const s = S(); if (typeof s.code !== 'string' || s.code.length < 6) { let c = ''; const a = crypto.getRandomValues(new Uint8Array(8)); for (const x of a) c += CODE_AB[x % CODE_AB.length]; s.code = c; save(); } return s.code; }
-  function myNick() { const s = S(); if (typeof s.nick !== 'string' || !s.nick) s.nick = t('diver') + ' ' + myCode().slice(0, 4); return s.nick; }
+  function myNick() { const s = S(); if (typeof s.nick !== 'string' || !s.nick) s.nick = myCode().slice(0, 4); return s.nick; }
   function snapshot() {
     const s = S(), counts = {}; for (const [k, v] of Object.entries(s.counts || {})) if (v > 0) counts[k] = v;
     const decor = {}; for (const k of Object.keys(s.decor || {})) if (s.decor[k]) decor[k] = 1;
@@ -479,7 +480,7 @@ export function initR5(H) {
     onGame(id, score, earned) { if (['bubble', 'run', 'memory', 'escape'].includes(id)) q('arcade2'); q('play', 1, id); q('pearls60', earned); renderQuestDot(); },
     renderShopSets, renderShopExtra, renderSettingsExtra, renderBanner,
     shopFull(id) { return (S().counts[id] || 0) + (sv('babies', []).some((b) => b.s === id) ? 1 : 0); },
-    refresh() { renderBanner(); renderQuestDot(); if (ui.care) renderCare(); if (ui.visit) $('visitNick').textContent = ui.visit.nick; $('visitBar').setAttribute('aria-label', t('visiting').replace('{n}', ui.visit.nick)); if (ui.sleep) renderSleep(); if (ui.photo) renderFilters();
+    refresh() { renderBanner(); renderQuestDot(); if (ui.care) renderCare(); if (ui.visit) { $('visitNick').textContent = ui.visit.nick; $('visitBar').setAttribute('aria-label', t('visiting').replace('{n}', ui.visit.nick)); } if (ui.sleep) renderSleep(); if (ui.photo) renderFilters();
       for (const [id, fn] of [['dexPanel', renderDex], ['questPanel', renderQuests], ['eventPanel', renderEvents], ['visitPanel', renderVisit]]) if (!$(id).classList.contains('hidden')) fn(); },
     // test & screenshot helpers (local only via window.__bh)
     test: { showBehaviour, forceBaby, enterPhoto, exitPhoto, shoot, enterSleep, exitSleep, startVisit, endVisit, visitRandom, visitCode, addFriend, setPublic, snapshot, liveEvents, upcoming, watchEvent, quests, q, dexOf, dexUnlocks, feedCare, petTick, callBonded, renderDex, renderQuests, renderEvents, renderVisit, showIdleTest: (n, hrs) => { ui.idle = { n, hrs }; showIdle(); }, ui, setLight, setBgm, buySet, placeSet, babyIdx, claimIdle },
