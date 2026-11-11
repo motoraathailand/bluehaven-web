@@ -78,4 +78,5 @@ export function setLang(code, save = true) {
   document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
 }
 export function getLang() { return current; }
+export function addStrings(o) { Object.assign(S, o); }
 export function t(key) { const e = S[key]; if (!e) return key; return e[current] || e.en; }

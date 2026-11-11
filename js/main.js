@@ -6,14 +6,19 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { U, rng, sandHeight } from './common.js?v=r3';
-import * as E from './env.js?v=r3';
-import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r3';
-import { SeaAudio } from './audio.js?v=r3';
-import { LANGS, detectLang, setLang, getLang, t } from './i18n.js?v=r3';
+import { U, rng, sandHeight } from './common.js?v=r4';
+import * as E from './env.js?v=r4';
+import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r4';
+import { SeaAudio } from './audio.js?v=r4';
+import { LANGS, detectLang, setLang, getLang, t, addStrings } from './i18n.js?v=r4';
+import { S4 } from './strings4.js?v=r4';
+import { Arcade, ARCADE, RATE } from './arcade.js?v=r4';
+import * as net from './net.js?v=r4';
+addStrings(S4);
 
 const qs = new URLSearchParams(location.search);
-const SHOT = qs.has('shot'), DEMO = qs.has('demo');
+const LOCAL = net.LOCAL; // test/demo switches only work on localhost — production always requires sign-in
+const SHOT = qs.has('shot'), DEMO = LOCAL && qs.has('demo');
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 const isMobile = isTouch && Math.min(screen.width, screen.height) < 900;
 const QUALITY = qs.get('q') || (isMobile ? 'mid' : 'high');
@@ -98,10 +103,11 @@ function addCreatures(id, n, arrive) { const g = ensureGroup(id); let first = -1
 // ---------- save ----------
 const SAVE_KEY = 'bluehaven.deep.save.v2';
 let save = { pearls: 30, counts: { lantern: SPECIES.lantern.start }, decor: {}, plays: 0 };
-try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && s.counts) save = Object.assign(save, s); } catch (e) {}
+const legacy = (() => { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && s.counts ? s : null; } catch (e) { return null; } })();
 if (DEMO) save = { pearls: 120, counts: { lantern: 144, hatchet: 36, angler: 3, eel: 2, jelly: 8, comb: 8, dumbo: 2, manta: 1, squid: 1, whale: 1 }, decor: { anem: 1, coral: 1, vent: 1, sponge: 1, clam: 1, arch: 1 }, plays: 3 };
-if (qs.has('school')) save = { pearls: 120, counts: { lantern: 150, manta: 1 }, decor: { anem: 1, coral: 1 }, plays: 3 };
-function persist() { if (DEMO) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
+if (LOCAL && qs.has('school')) save = { pearls: 120, counts: { lantern: 150, manta: 1 }, decor: { anem: 1, coral: 1 }, plays: 3 };
+function persist(now) { if (DEMO || !cloudReady) return; net.queueSave(save, now); }
+let cloudReady = false;
 for (const id of DECOR_ORDER) if (save.decor[id]) placeDecor(id, false);
 for (const id of SPECIES_ORDER) if (save.counts[id]) addCreatures(id, save.counts[id], false);
 
@@ -204,14 +210,14 @@ function refreshTexts() {
   $('icSound').innerHTML = audio.muted ? '<path d="M4 10v4h4l5 4V6L8 10z"/><path d="M17 9l5 6M22 9l-5 6"/>' : '<path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>';
   const h = isTouch ? t('hintTouch') : t('hintKeys'); $('hint').textContent = h; $('startHint').textContent = h;
   const menu = $('langMenu'); menu.innerHTML = '';
-  for (const L of LANGS) { const b = document.createElement('button'); b.textContent = L.label; b.className = L.code === getLang() ? 'on' : ''; b.onclick = () => { setLang(L.code); refreshTexts(); menu.classList.add('hidden'); }; menu.appendChild(b); }
+  for (const L of LANGS) { const b = document.createElement('button'); b.textContent = L.label; b.className = L.code === getLang() ? 'on' : ''; b.onclick = () => { chooseLang(L.code); menu.classList.add('hidden'); }; menu.appendChild(b); }
   if (cam.follow) $('followName').textContent = t('following') + ' · ' + t('sp_' + cam.follow.g.id);
-  renderShop(); setPearls(false);
+  renderShop(); setPearls(false); if (typeof renderHub === 'function') { renderHub(); setAuthUI(authState, authMsg); }
 }
 setLang(qs.get('lang') || detectLang(), false);
 $('langBtn').onclick = (e) => { e.stopPropagation(); $('langMenu').classList.toggle('hidden'); };
 document.addEventListener('pointerdown', (e) => { if (!$('langMenu').contains(e.target) && !e.target.closest('#langBtn')) $('langMenu').classList.add('hidden'); });
-function toggleMute() { audio.setMuted(!audio.muted); try { localStorage.setItem('bluehaven.muted', audio.muted ? '1' : '0'); } catch (e) {} refreshTexts(); }
+function toggleMute() { audio.setMuted(!audio.muted); try { localStorage.setItem('bluehaven.muted', audio.muted ? '1' : '0'); } catch (e) {} save.settings = Object.assign(save.settings || {}, { muted: audio.muted }); persist(); refreshTexts(); if (!$('setPanel').classList.contains('hidden')) renderSettings(); }
 $('muteBtn').onclick = toggleMute;
 
 // art for cards (simple original vector silhouettes)
@@ -276,16 +282,16 @@ function buy(kind, id) {
   }
   persist(); renderShop();
 }
-let toastTm = 0;
-function toast(a, b) { const el = $('toast'); el.querySelector('.t1').textContent = a; el.querySelector('.t2').textContent = b; el.classList.remove('hidden'); clearTimeout(toastTm); toastTm = setTimeout(() => el.classList.add('hidden'), SHOT ? 1e9 : 4200); }
+let toastTm = 0, pendToast = null;
+function toast(a, b, defer) { if (defer && ST.mode === 'title') { pendToast = [a, b]; return; } const el = $('toast'); el.querySelector('.t1').textContent = a; el.querySelector('.t2').textContent = b; el.classList.remove('hidden'); clearTimeout(toastTm); toastTm = setTimeout(() => el.classList.add('hidden'), SHOT ? 1e9 : 4200); }
 
-function openSheet(id) { closeSheets(); $(id).classList.remove('hidden'); if (id === 'shopPanel') renderShop(); audio.tap(); }
-function closeSheets() { for (const id of ['gamesPanel', 'shopPanel', 'resultPanel']) $(id).classList.add('hidden'); }
+function openSheet(id) { closeSheets(); $(id).classList.remove('hidden'); if (id === 'shopPanel') renderShop(); if (id === 'gamesPanel') renderHub(); if (id === 'setPanel') renderSettings(); audio.tap(); }
+function closeSheets() { for (const id of ['gamesPanel', 'shopPanel', 'resultPanel', 'setPanel', 'delPanel']) $(id).classList.add('hidden'); }
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => { $(b.dataset.close).classList.add('hidden'); audio.tap(); });
 document.querySelectorAll('.sheet').forEach(s => s.addEventListener('pointerdown', (e) => { if (e.target === s && s.id !== 'resultPanel') s.classList.add('hidden'); }));
 $('gamesBtn').onclick = () => openSheet('gamesPanel');
 $('shopBtn').onclick = () => openSheet('shopPanel');
-document.querySelectorAll('[data-game]').forEach(b => b.onclick = () => startMinigame(b.dataset.game));
+
 
 // ---------- follow ----------
 function startFollow(g, i) { cam.follow = { g, i }; cam.fYaw = 0.9; $('followChip').classList.remove('hidden'); $('followName').textContent = t('following') + ' · ' + t('sp_' + g.id); }
@@ -320,6 +326,7 @@ canvas.addEventListener('pointerup', endPtr); canvas.addEventListener('pointerca
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.tDist = THREE.MathUtils.clamp(cam.tDist * (1 + Math.sign(e.deltaY) * 0.08), 5, 42); cam.idle = 0; }, { passive: false });
 addEventListener('keydown', (e) => {
   if (ST.mode === 'title') { if (e.code === 'Enter' || e.code === 'Space') startPlay(); return; }
+  if (arcade.active) return;
   keys.add(e.code);
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyG' && !ST.mg) openSheet('gamesPanel');
@@ -370,15 +377,16 @@ function spawnPearl() {
   const depth = 8 + Math.random() * 6, halfH = depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), halfW = halfH * camera.aspect;
   const p = camera.position.clone().addScaledVector(fwd, depth).addScaledVector(rgt, (Math.random() * 2 - 1) * halfW * 0.78).addScaledVector(upv, -halfH * 1.1);
   p.y = Math.max(p.y, sandHeight(p.x, p.z) + 0.6);
-  const gold = Math.random() < 0.14; const speed = (gold ? 2.2 : 1.3) + Math.random() * 0.9;
+  const gold = Math.random() < 0.14; const speed = ((gold ? 2.2 : 1.3) + Math.random() * 0.9) * (1 + 0.6 * mgState.time / mgState.dur);
   pearls.push({ p, gold, speed, life: (halfH * 2.4) / speed, age: 0, ph: Math.random() * 6.28, pop: 0 });
 }
 function tapPearl(x, y) {
   let best = -1, bd = 1e9; const s = { x: 0, y: 0, z: 0 };
   pearls.forEach((pl, i) => { if (pl.pop) return; toScreen(pl.p, s); const rad = Math.max(48, 0.6 / camera.position.distanceTo(pl.p) * innerHeight * 1.3); const d = Math.hypot(s.x - x, s.y - y); if (d < rad && d < bd) { bd = d; best = i; } });
   if (best < 0) { mgState.combo = 0; return; }
-  const pl = pearls[best]; pl.pop = 0.001; const val = pl.gold ? 3 : 1; mgState.score += val;
+  const pl = pearls[best]; pl.pop = 0.001;
   mgState.combo = (U.uTime.value - mgState.lastHit < 1.6) ? mgState.combo + 1 : 0; mgState.lastHit = U.uTime.value;
+  const mult = 1 + Math.min(2, Math.floor(mgState.combo / 5)), val = (pl.gold ? 3 : 1) * mult; mgState.score += val; $('mgMult').textContent = '×' + mult;
   audio.pearl(mgState.combo, pl.gold); burst(pl.p, pl.gold ? 22 : 12, pl.gold); floater(x, y, '+' + val, pl.gold); $('mgScore').textContent = mgState.score;
 }
 
@@ -407,25 +415,23 @@ function onEat(f, g, i) {
 function startMinigame(kind) {
   closeSheets(); stopFollow();
   ST.mg = kind; Object.assign(mgState, { time: 0, dur: kind === 'pearls' ? 40 : 35, score: 0, spawn: 0, combo: 0, food: [], bites: 0 });
-  pearls.length = 0; $('mgScore').textContent = '0'; $('mgHud').classList.remove('hidden'); $('dock').classList.add('hidden'); $('hint').classList.add('hidden');
+  pearls.length = 0; $('mgScore').textContent = '0'; $('mgMult').textContent = '×1'; $('mgMultBox').classList.toggle('hidden', kind !== 'pearls'); $('mgLivesBox').classList.add('hidden'); $('mgHud').classList.remove('hidden'); $('dock').classList.add('hidden'); $('hint').classList.add('hidden');
   cam.home = false; cam.tTarget.set(0, kind === 'pearls' ? 6 : 5, 0); cam.tDist = kind === 'pearls' ? 17 : 20; cam.tPitch = kind === 'pearls' ? 0.05 : 0.18;
   audio.setGame(true); audio.tap();
   toast(t(kind === 'pearls' ? 'mg1' : 'mg2'), t(kind === 'pearls' ? 'mg1d' : 'mg2d'));
 }
 function endMinigame() {
-  if (!ST.mg) return; const earned = mgState.score + 5; ST.mg = null;
+  if (!ST.mg || arcade.active) return; const kind = ST.mg, score = mgState.score; ST.mg = null;
   pearls.forEach(p => { if (!p.pop) p.pop = 0.001; });
-  $('mgHud').classList.add('hidden'); audio.setGame(false); audio.finish();
-  $('earnedN').textContent = '+' + earned; $('resultPanel').classList.remove('hidden'); $('resultPanel').dataset.earned = earned;
-  $('toast').classList.add('hidden');
+  gameOver(kind, score);
 }
-$('mgEnd').onclick = endMinigame;
-function collect(thenShop) { const e = +($('resultPanel').dataset.earned || 0); $('resultPanel').dataset.earned = 0; save.pearls += e; save.plays = (save.plays || 0) + 1; persist(); setPearls(true); closeSheets(); $('dock').classList.remove('hidden'); audio.tap(); if (thenShop) openSheet('shopPanel'); cam.tTarget.set(0, 5.5, 0); cam.tDist = homeD(); cam.home = true; }
-$('collectBtn').onclick = () => collect(false); $('toShopBtn').onclick = () => collect(true);
+$('mgEnd').onclick = () => { if (arcade.active) arcade.finish(); else endMinigame(); };
+function collect(thenShop) { closeSheets(); $('dock').classList.remove('hidden'); audio.tap(); if (thenShop) openSheet('shopPanel'); cam.tTarget.set(0, 5.5, 0); cam.tDist = homeD(); cam.home = true; }
+$('collectBtn').onclick = () => collect(false); $('toShopBtn').onclick = () => collect(true); $('againBtn').onclick = () => { collect(false); startGame(lastGame); };
 
 function updateMinigame(dt) {
   // pearls
-  if (ST.mg === 'pearls') { mgState.spawn -= dt; if (mgState.spawn <= 0 && mgState.time < mgState.dur - 2) { spawnPearl(); if (Math.random() < 0.25) spawnPearl(); mgState.spawn = 0.45 + Math.random() * 0.5; } }
+  if (ST.mg === 'pearls') { mgState.spawn -= dt; if (mgState.spawn <= 0 && mgState.time < mgState.dur - 2) { spawnPearl(); if (Math.random() < 0.25) spawnPearl(); mgState.spawn = (0.45 + Math.random() * 0.5) * (1 - 0.4 * mgState.time / mgState.dur); } }
   let k = 0;
   for (let i = pearls.length - 1; i >= 0; i--) { const pl = pearls[i]; pl.age += dt; if (pl.pop) pl.pop += dt * 4; if (pl.age > pl.life || pl.pop > 1) pearls.splice(i, 1); }
   for (const pl of pearls) {
@@ -440,7 +446,7 @@ function updateMinigame(dt) {
   const F = mgState.food; for (let i = F.length - 1; i >= 0; i--) { const f = F[i]; f.age += dt; f.p.y -= f.v * dt; f.p.x += Math.sin(U.uTime.value * 2 + f.ph) * 0.15 * dt; if (f.eaten || f.age > 22 || f.p.y < sandHeight(f.p.x, f.p.z) + 0.1) F.splice(i, 1); }
   for (let i = 0; i < FOOD_MAX; i++) { if (i < F.length) { foodPos.set([F[i].p.x, F[i].p.y, F[i].p.z], i * 3); foodA[i] = Math.min(1, F[i].age * 3) * (1 - Math.max(0, F[i].age - 20) / 2); } else foodA[i] = 0; }
   foodGeo.attributes.position.needsUpdate = true; foodGeo.attributes.aA.needsUpdate = true;
-  if (ST.mg) {
+  if (ST.mg && !arcade.active) {
     mgState.time += dt; const left = Math.max(0, mgState.dur - mgState.time); $('mgTime').textContent = Math.ceil(left);
     $('ringFg').style.strokeDashoffset = String(119.4 * (1 - left / mgState.dur));
     if (left <= 0) endMinigame();
@@ -449,11 +455,12 @@ function updateMinigame(dt) {
 
 // ---------- start ----------
 function startPlay() {
-  if (ST.mode !== 'title') return;
+  if (ST.mode !== 'title' || (GATE && !cloudReady)) return;
   audio.start(); audio.setMuted(audio.muted);
   $('startScreen').classList.add('hidden'); ST.mode = 'play';
   $('dock').classList.remove('hidden'); $('hint').classList.remove('hidden'); setTimeout(() => $('hint').classList.add('hidden'), 9000);
   cam.tDist = homeD(); cam.tPitch = 0.1; cam.home = true;
+  if (pendToast) { const p = pendToast; pendToast = null; setTimeout(() => toast(p[0], p[1]), 700); }
 }
 $('startBtn').onclick = startPlay;
 
@@ -476,7 +483,7 @@ const ctx = { food: null, onEat, avoid: null, threats: [], schoolC: null };
 let paused = false;
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (!paused) { adapt(dt); tick(dt); composer.render(dt); }
+  if (!paused) { if (arcade.active) arcade.frame(dt); else { adapt(dt); tick(dt); composer.render(dt); } }
   requestAnimationFrame(frame);
 }
 function tick(dt) {
@@ -540,6 +547,144 @@ function tick(dt) {
   shafts.userData.update(camera);
 }
 
+// ---------- account: Google sign-in gate + cloud save ----------
+var authState = 'out', authMsg = '';
+let user = null;
+const GATE = !(LOCAL && qs.has('auto') && !net.EMU); // only local screenshot/dev runs may skip sign-in
+function setAuthUI(state, msg = '') {
+  authState = state; authMsg = msg;
+  const gb = $('googleBtn'); gb.classList.toggle('hidden', state === 'in' || state === 'loading'); gb.disabled = state === 'busy';
+  gb.querySelector('span').textContent = t(state === 'busy' ? 'signingIn' : 'signInGoogle');
+  const note = $('authNote'); note.classList.toggle('err', !!msg); note.textContent = msg || t(state === 'loading' ? 'loadingSea' : 'signInNeed'); note.classList.toggle('hidden', state === 'in' && !msg);
+  $('startBtn').classList.toggle('hidden', state !== 'in');
+  $('whoLine').classList.toggle('hidden', state !== 'in'); if (user) $('whoLine').textContent = t('signedInAs') + ' ' + (user.displayName || user.email || '');
+  $('inAppBox').classList.toggle('hidden', !(net.IN_APP && state !== 'in'));
+}
+function authError(e) {
+  const c = (e && e.code) || '';
+  if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return '';
+  if (c === 'auth/unauthorized-domain') return t('authDomainErr');
+  console.warn('[auth]', c || e); return t('authErr');
+}
+$('googleBtn').onclick = async () => {
+  audio.start(); audio.setMuted(audio.muted); setAuthUI('busy');
+  try { await net.signIn(); } catch (e) { setAuthUI('out', authError(e)); }
+};
+$('copyLinkBtn').onclick = async () => { try { await navigator.clipboard.writeText(location.href); toast('', t('linkCopied')); } catch (e) { prompt('', location.href); } };
+function cleanSave(d) {
+  const o = { pearls: 30, counts: { lantern: SPECIES.lantern.start }, decor: {}, plays: 0, hs: {}, daily: {}, settings: {} };
+  if (!d) return o;
+  for (const k of ['pearls', 'plays']) if (Number.isFinite(d[k])) o[k] = Math.max(0, Math.floor(d[k]));
+  for (const k of ['counts', 'decor', 'hs', 'daily', 'settings']) if (d[k] && typeof d[k] === 'object') o[k] = Object.assign(o[k], d[k]);
+  for (const k of net.EXTRA) if (d[k] !== undefined) o[k] = d[k];
+  for (const id of Object.keys(o.counts)) if (!SPECIES[id]) delete o.counts[id]; else o.counts[id] = Math.min(SPECIES[id].max, Math.max(0, Math.floor(o.counts[id])));
+  return o;
+}
+function applySave(d) {
+  save = cleanSave(d);
+  for (const id of DECOR_ORDER) if (save.decor[id]) placeDecor(id, false);
+  for (const id of SPECIES_ORDER) { const want = save.counts[id] || 0, have = groups[id] ? groups[id].n : 0; if (want > have) addCreatures(id, want - have, false); }
+  const st = save.settings || {};
+  if (st.lang && !qs.get('lang')) setLang(st.lang);
+  if (typeof st.muted === 'boolean' && st.muted !== audio.muted) audio.setMuted(st.muted);
+  refreshTexts(); setPearls(false);
+}
+function chooseLang(code) { setLang(code); save.settings = Object.assign(save.settings || {}, { lang: getLang() }); persist(); refreshTexts(); if (!$('setPanel').classList.contains('hidden')) renderSettings(); }
+if (GATE && !DEMO) net.onUser(async (u) => {
+  user = u;
+  if (!u) { cloudReady = false; document.body.classList.add('locked'); setAuthUI('out'); return; }
+  setAuthUI('loading');
+  let r; try { r = await net.loadSave(u); } catch (e) { r = { data: null, fresh: true, offline: true }; }
+  let data = r.data, migrated = false;
+  if (!data && legacy) { data = legacy; migrated = true; }
+  applySave(data); cloudReady = true;
+  if (r.fresh) { persist(true); if (migrated) { try { localStorage.setItem(SAVE_KEY + '.migrated', JSON.stringify(legacy)); localStorage.removeItem(SAVE_KEY); } catch (e) {} } }
+  document.body.classList.remove('locked'); setAuthUI('in');
+  if (migrated) toast(t('welcomeBack'), t('migrated'), 1); else if (r.offline) toast('', t('offlineNote'), 1);
+}, (e) => setAuthUI('out', authError(e)));
+else { cloudReady = !GATE || DEMO; if (!GATE || DEMO) { document.body.classList.remove('locked'); setAuthUI('in'); } }
+
+// ---------- settings ----------
+function renderSettings() {
+  const u = user; $('acName').textContent = u ? (u.displayName || 'Player') : (DEMO ? 'Demo' : '—'); $('acMail').textContent = u ? (u.email || '') : '';
+  const av = $('acAvatar'); if (u && u.photoURL) { av.style.backgroundImage = `url("${u.photoURL}")`; av.textContent = ''; } else { av.style.backgroundImage = ''; av.textContent = ((u && (u.displayName || u.email)) || 'B')[0].toUpperCase(); }
+  $('acSync').textContent = navigator.onLine ? t('syncOk') : t('offlineNote');
+  const L = $('setLangs'); L.innerHTML = ''; for (const l of LANGS) { const b = document.createElement('button'); b.textContent = l.label; b.className = l.code === getLang() ? 'on' : ''; b.onclick = () => chooseLang(l.code); L.appendChild(b); }
+  const S = $('setSound'); S.innerHTML = ''; for (const on of [true, false]) { const b = document.createElement('button'); b.textContent = t(on ? 'on' : 'off'); b.className = (!audio.muted) === on ? 'on' : ''; b.onclick = () => { if ((!audio.muted) !== on) toggleMute(); }; S.appendChild(b); }
+}
+$('setBtn').onclick = () => openSheet('setPanel');
+$('signOutBtn').onclick = async () => { audio.tap(); try { await net.signOut(); } catch (e) {} location.reload(); };
+$('deleteBtn').onclick = () => { closeSheets(); $('delPanel').classList.remove('hidden'); audio.tap(); };
+$('delNo').onclick = () => { $('delPanel').classList.add('hidden'); openSheet('setPanel'); };
+$('delYes').onclick = async () => {
+  const b = $('delYes'); b.disabled = true; b.querySelector('span').textContent = t('deleting');
+  try { await net.deleteAccount(); cloudReady = false; closeSheets(); toast('', t('deleted')); setTimeout(() => location.reload(), 1800); }
+  catch (e) { console.warn('[delete]', e.code || e); b.disabled = false; b.querySelector('span').textContent = t('deleteYes'); toast('', t('deleteFail')); }
+};
+
+// ---------- games hub (arcade + relaxing) with daily bonus & challenge ----------
+const ALL_GAMES = [...ARCADE, 'pearls', 'feed'];
+const gName = (id) => ARCADE.includes(id) ? 'ga_' + id : id === 'pearls' ? 'mg1' : 'mg2';
+const gDesc = (id) => gName(id) + (ARCADE.includes(id) ? '_d' : 'd');
+const GICON = {
+  bubble: '<svg viewBox="0 0 48 48"><circle cx="24" cy="18" r="9" fill="none" stroke="#bff4ff" stroke-width="2.5"/><circle cx="14" cy="34" r="5" fill="#bff4ff" opacity=".6"/><circle cx="34" cy="36" r="6.5" fill="#ffd98a" opacity=".75"/><circle cx="21" cy="15" r="2" fill="#fff"/></svg>',
+  run: '<svg viewBox="0 0 48 48"><path d="M0 10q12 8 24 2t24 2V0H0zM0 40q12-8 24-2t24-2v12H0z" fill="#0c3456"/><path d="M14 24c4-5 12-5 16 0-4 5-12 5-16 0z" fill="#bff4ff"/><path d="M14 24l-5-4v8z" fill="#7fd8f0"/><circle cx="36" cy="22" r="2.4" fill="#9affd0"/><circle cx="42" cy="26" r="2" fill="#9affd0"/></svg>',
+  memory: '<svg viewBox="0 0 48 48">' + ['#5af0ff', '#ff7ad0', '#ffd25a', '#7aff9a', '#a890ff', '#ff9a5a'].map((c, i) => { const a = -Math.PI / 2 + i / 6 * Math.PI * 2; return `<circle cx="${(24 + Math.cos(a) * 14).toFixed(1)}" cy="${(24 + Math.sin(a) * 14).toFixed(1)}" r="5.5" fill="${c}" opacity="${i === 1 ? 1 : 0.55}"/>`; }).join('') + '</svg>',
+  escape: '<svg viewBox="0 0 48 48"><circle cx="16" cy="30" r="6" fill="#fff3d0" opacity=".85"/>' + [[22, 22], [27, 28], [24, 34], [30, 20], [32, 32]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx="3" ry="1.4" fill="#d4f6ff"/>`).join('') + '<path d="M46 12c-6-3-12-2-16 2l-4-3 1 5c4 3 10 3 19-4z" fill="#0a1424" stroke="#8aa4cc"/></svg>',
+};
+const iconFor = (id) => GICON[id] ? `<div class="gicon arc">${GICON[id]}</div>` : id === 'pearls'
+  ? '<div class="gicon pearls"><svg viewBox="0 0 48 48"><circle cx="16" cy="30" r="7"/><circle cx="31" cy="20" r="9"/><circle cx="34" cy="36" r="4.5"/></svg></div>'
+  : '<div class="gicon feed"><svg viewBox="0 0 48 48"><path d="M8 26c7-9 19-9 26 0-7 9-19 9-26 0z"/><path d="M34 26l7-6v12z"/><circle cx="22" cy="9" r="2"/><circle cx="29" cy="13" r="1.6"/><circle cx="16" cy="13" r="1.4"/></svg></div>';
+const dayKey = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+function daily() {
+  const k = dayKey(); if (!save.daily || save.daily.day !== k) { let h = 7; for (const c of k) h = (h * 31 + c.charCodeAt(0)) | 0; save.daily = { day: k, bonus: false, ch: ARCADE[Math.abs(h) % ARCADE.length], chDone: false }; }
+  return save.daily;
+}
+function renderHub() {
+  if (!$('hubDaily')) return; const d = daily();
+  $('hubDaily').innerHTML = `<div class="dl${d.bonus ? ' done' : ''}">${PEARL_DOT}<span>${t(d.bonus ? 'dailyDone' : 'dailyBonus')}</span></div>` +
+    `<div class="dl${d.chDone ? ' done' : ''}"><svg viewBox="0 0 24 24" class="ic"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg><span>${t('challenge')}: <b>${t(gName(d.ch))}</b> · ${t(d.chDone ? 'challengeDone' : 'challengeX2')}</span></div>`;
+  for (const [box, list] of [['hubArcade', ARCADE], ['hubRelax', ['pearls', 'feed']]]) {
+    const el = $(box); el.innerHTML = '';
+    for (const id of list) {
+      const c = document.createElement('div'); c.className = 'gcard'; const best = (save.hs && save.hs[id]) || 0;
+      c.innerHTML = `${iconFor(id)}<div class="gtxt"><b>${t(gName(id))}</b><p>${t(gDesc(id))}</p><div class="best">${t('best')} ${best.toLocaleString()}${d.ch === id && !d.chDone ? `<span class="tag">${t('challenge')} ×2</span>` : ''}</div></div>`;
+      const b = document.createElement('button'); b.className = 'cta small'; b.innerHTML = `<svg viewBox="0 0 24 24" class="ic"><path d="M8 5v14l11-7z"/></svg><span>${t('play')}</span>`; b.onclick = () => startGame(id);
+      c.appendChild(b); el.appendChild(c);
+    }
+  }
+}
+let lastGame = 'bubble';
+function startGame(id) { lastGame = id; if (ARCADE.includes(id)) startArcade(id); else startMinigame(id); }
+const HEART = '<svg viewBox="0 0 24 24" class="ic" style="fill:#ff9ab0;stroke:none"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>';
+const SHELL = '<svg viewBox="0 0 24 24" class="ic" style="fill:#ffe2c8;stroke:none"><path d="M12 4c5 0 8 4 8 8l-8 8-8-8c0-4 3-8 8-8z"/></svg>';
+const FISH = '<svg viewBox="0 0 24 24" class="ic" style="fill:#d4f6ff;stroke:none"><path d="M3 12c4-5 11-5 15 0-4 5-11 5-15 0z"/><path d="M18 12l3.5-3v6z"/></svg>';
+const arcade = new Arcade($('arc'), audio, {
+  t,
+  hud: (h) => { $('mgTime').textContent = Math.ceil(h.left); $('ringFg').style.strokeDashoffset = String(119.4 * (1 - h.left / h.dur)); $('mgScore').textContent = h.score.toLocaleString();
+    $('mgMult').textContent = '×' + (h.mult % 1 ? h.mult.toFixed(1) : h.mult);
+    $('mgLives').innerHTML = h.livesKind === 'fish' ? FISH + ' ' + h.lives : (h.livesKind === 'heart' ? HEART : SHELL).repeat(Math.max(0, h.lives)); },
+  end: (r) => gameOver(r.id, r.score),
+});
+function startArcade(id) {
+  closeSheets(); stopFollow(); ST.mg = 'arc'; $('mgScore').textContent = '0';
+  $('mgHud').classList.remove('hidden'); $('mgMultBox').classList.remove('hidden'); $('mgLivesBox').classList.remove('hidden'); $('dock').classList.add('hidden'); $('hint').classList.add('hidden'); $('toast').classList.add('hidden');
+  audio.setGame(true); audio.tap(); arcade.start(id);
+}
+function gameOver(id, score) {
+  ST.mg = null; $('mgHud').classList.add('hidden'); $('mgMultBox').classList.add('hidden'); $('mgLivesBox').classList.add('hidden'); audio.setGame(false); audio.finish(); $('toast').classList.add('hidden');
+  const d = daily(), base = Math.max(5, Math.min(400, ARCADE.includes(id) ? Math.round(score / RATE[id]) + 5 : score + 5)); let earned = base; const bonus = [];
+  if (d.ch === id && !d.chDone) { earned += base; d.chDone = true; bonus.push(t('bonusChallenge')); }
+  if (!d.bonus) { earned += 20; d.bonus = true; bonus.push(t('bonusDaily') + ' +20'); }
+  earned = Math.min(earned, 2400);
+  save.hs = save.hs || {}; const prev = save.hs[id] || 0, nb = score > prev && score > 0; if (nb) save.hs[id] = score;
+  save.pearls += earned; save.plays = (save.plays || 0) + 1; persist(); setPearls(true);
+  $('resScore').innerHTML = `${t(gName(id))}<b>${score.toLocaleString()}</b>`;
+  $('resBest').textContent = nb ? '★ ' + t('newBest') : t('best') + ' ' + Math.max(prev, score).toLocaleString();
+  $('resBonus').textContent = bonus.join(' · ');
+  $('earnedN').textContent = '+' + earned; $('resultPanel').classList.remove('hidden');
+}
+
 // ---------- hooks for automated screenshots ----------
 window.__bh = {
   start: startPlay, openShop: (tab) => { if (tab) { shopTab = tab; document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.tab === tab)); } openSheet('shopPanel'); }, openGames: () => openSheet('openGames' && 'gamesPanel'),
@@ -553,11 +698,18 @@ window.__bh = {
   level: (l) => { level = l; applyLevel(); }, LOD,
   freeze: (on) => { paused = on; }, stepFrame: (dt, render = true) => { tick(dt); if (render) composer.render(dt); },
   steer: (id, x, y, z, hold = 12) => { const g = groups[id]; if (!g || !g.tgt) return; for (let i = 0; i < g.n; i++) { g.tgt[i].set(x, y, z); g.tgtT[i] = hold; } },
-  dropAt: (x, y) => dropFood(x, y), ff: (sec) => { for (let i = 0; i < sec / 0.05; i++) tick(0.05); }, buy, groups, save, cam, pearls,
+  arcBot: () => { let last = 0; setInterval(() => { const A = arcade, s = A.st; if (!A.active || !s || s.intro > 0 || s.over) return; const G = A.G;
+    if (A.id === 'bubble') for (const n of s.notes) if (!n.done && Math.abs(s.t - n.hit) < 0.035) G.hitLane.call(A, n.lane);
+    if (A.id === 'run') { const px = A.W * 0.26, [tp, bt] = G.walls.call(A, px + 50); let ty = (tp + bt) / 2; for (const o of s.obs) { const sx = o.x - s.dist; if (sx > px - 30 && sx < px + 170 && o.y !== undefined) ty += (ty > o.y ? 1 : -1) * 55 * A.S; } A.ptr.down = true; A.ptr.y = ty; }
+    if (A.id === 'memory' && s.phase === 'input' && performance.now() - last > 260) { last = performance.now(); const i = s.seq[s.idx], [x, y] = G.pos.call(A, i); G.press.call(A, i, x, y); }
+    if (A.id === 'escape') { const c = s.clouds[0]; A.ptr.down = true; if (c) { A.ptr.x = c.x; A.ptr.y = c.y; } }
+  }, 30); },
+  hub: () => openSheet('gamesPanel'), settings: () => openSheet('setPanel'), arcade, arc: (id) => startGame(id), authUI: (st, m) => setAuthUI(st, m),
+  dropAt: (x, y) => dropFood(x, y), ff: (sec) => { for (let i = 0; i < sec / 0.05; i++) tick(0.05); }, buy, groups, get save() { return save; }, cam, pearls,
 };
 
 refreshTexts(); setPearls(false);
 requestAnimationFrame(() => $('fade').classList.add('off'));
 if (SHOT) document.body.classList.add('shot');
-if (qs.has('auto')) { ST.mode = 'play'; $('startScreen').classList.add('hidden'); $('dock').classList.remove('hidden'); }
+if (LOCAL && qs.has('auto') && !net.EMU) { ST.mode = 'play'; $('startScreen').classList.add('hidden'); $('dock').classList.remove('hidden'); }
 frame();

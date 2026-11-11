@@ -2,8 +2,8 @@
 // Bodies are built in code (volumetric bodies, separate fins, eyes); motion = vertex-shader spine wave + true 3D steering.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, noise3, sandHeight, setGlow } from './common.js?v=r3';
-import { obstacles } from './env.js?v=r3';
+import { U, rng, noise3, sandHeight, setGlow } from './common.js?v=r4';
+import { obstacles } from './env.js?v=r4';
 
 const C = (h) => new THREE.Color(h);
 const tmpC = new THREE.Color();

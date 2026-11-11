@@ -1,7 +1,7 @@
 // BLUE HAVEN (deep sea) — environment: abyssal water, silt floor, rocks, bioluminescent plants & corals, vents, particles.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, fbm, noise3, sandHeight, deep, setGlow } from './common.js?v=r3';
+import { U, rng, fbm, noise3, sandHeight, deep, setGlow } from './common.js?v=r4';
 
 export const PAL = {
   deep: new THREE.Color('#08223e'), mid: new THREE.Color('#12446e'), up: new THREE.Color('#1c6298'), top: new THREE.Color('#3088c0'),
