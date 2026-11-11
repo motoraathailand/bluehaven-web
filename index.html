@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0a3a4e">
+<title>BLUE HAVEN — 나만의 바닷속 정원</title>
+<meta name="description" content="BLUE HAVEN — a calm underwater garden. Play gentle minigames, gather pearls and grow your own sea. By MOTOR AA.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230d4f68'/%3E%3Cpath d='M14 34c8-10 22-10 30 0-8 10-22 10-30 0z' fill='%23ffb28a'/%3E%3Cpath d='M44 34l8-7v14z' fill='%23ffb28a'/%3E%3Ccircle cx='22' cy='32' r='2' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div class="left">
+    <div class="brand"><svg viewBox="0 0 24 24" class="ic"><path d="M3 12c4-5 11-5 15 0-4 5-11 5-15 0z"/><path d="M18 12l3.5-3v6z"/><circle cx="7.5" cy="11.3" r=".6" fill="currentColor"/></svg><span>BLUE HAVEN</span></div>
+    <div id="pearlPill" class="pill pearl" aria-live="polite"><span class="pearlDot"></span><b id="pearlCount">0</b></div>
+  </div>
+  <div class="tools">
+    <button id="langBtn" class="pill" data-i18n-aria="language"><svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></svg><span id="langCode">EN</span></button>
+    <button id="muteBtn" class="pill"><svg viewBox="0 0 24 24" class="ic" id="icSound"></svg><span id="muteLabel" class="lbl"></span></button>
+  </div>
+</div>
+<div id="langMenu" class="menu hidden" role="menu"></div>
+
+<div id="followChip" class="chip hidden"><svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span id="followName"></span>
+  <button id="stopFollow" class="mini" data-i18n-aria="stopFollow"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg><span data-i18n="stopFollow"></span></button></div>
+
+<div id="hint" class="hidden"></div>
+<div id="toast" class="hidden"><div class="t1"></div><div class="t2"></div></div>
+
+<div id="dock" class="hidden">
+  <button id="gamesBtn" class="dockBtn"><svg viewBox="0 0 24 24" class="ic big"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7 10.5v4M5 12.5h4"/><circle cx="15.5" cy="11.5" r=".9" fill="currentColor"/><circle cx="17.8" cy="13.8" r=".9" fill="currentColor"/></svg><span data-i18n="games"></span></button>
+  <button id="shopBtn" class="dockBtn warm"><svg viewBox="0 0 24 24" class="ic big"><path d="M12 21v-7"/><path d="M12 14c0-3-2-4-2-7a2 2 0 0 1 4 0c0 3-2 4-2 7z"/><path d="M12 16c-2-1-5-1-6-4 2 0 5 1 6 4zM12 16c2-1 5-1 6-4-2 0-5 1-6 4z"/><path d="M5 21h14"/></svg><span data-i18n="grow"></span></button>
+</div>
+
+<!-- minigame HUD -->
+<div id="mgHud" class="hidden">
+  <div class="mgBox"><svg viewBox="0 0 44 44" class="ring"><circle cx="22" cy="22" r="19" class="track"/><circle cx="22" cy="22" r="19" id="ringFg" class="fg"/></svg><b id="mgTime">40</b></div>
+  <div class="mgBox wide"><span class="pearlDot"></span><b id="mgScore">0</b></div>
+  <button id="mgEnd" class="pill"><svg viewBox="0 0 24 24" class="ic"><path d="M5 13l4 4L19 7"/></svg><span data-i18n="endEarly"></span></button>
+</div>
+<div id="floaters"></div>
+
+<!-- games panel -->
+<div id="gamesPanel" class="sheet hidden">
+  <div class="sheetCard">
+    <div class="sheetHead"><h3 data-i18n="games"></h3><button class="mini close" data-close="gamesPanel" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="games">
+      <div class="gcard"><div class="gicon pearls"><svg viewBox="0 0 48 48"><circle cx="16" cy="30" r="7"/><circle cx="31" cy="20" r="9"/><circle cx="34" cy="36" r="4.5"/></svg></div>
+        <div class="gtxt"><b data-i18n="mg1"></b><p data-i18n="mg1d"></p></div>
+        <button class="cta small" data-game="pearls"><svg viewBox="0 0 24 24" class="ic"><path d="M8 5v14l11-7z"/></svg><span data-i18n="play"></span></button></div>
+      <div class="gcard"><div class="gicon feed"><svg viewBox="0 0 48 48"><path d="M8 26c7-9 19-9 26 0-7 9-19 9-26 0z"/><path d="M34 26l7-6v12z"/><circle cx="22" cy="9" r="2"/><circle cx="29" cy="13" r="1.6"/><circle cx="16" cy="13" r="1.4"/></svg></div>
+        <div class="gtxt"><b data-i18n="mg2"></b><p data-i18n="mg2d"></p></div>
+        <button class="cta small" data-game="feed"><svg viewBox="0 0 24 24" class="ic"><path d="M8 5v14l11-7z"/></svg><span data-i18n="play"></span></button></div>
+    </div>
+    <div class="note" data-i18n="growsNote"></div>
+  </div>
+</div>
+
+<!-- shop panel -->
+<div id="shopPanel" class="sheet hidden">
+  <div class="sheetCard">
+    <div class="sheetHead"><h3 data-i18n="grow"></h3><div class="pill pearl small"><span class="pearlDot"></span><b class="pearlMirror">0</b></div><button class="mini close" data-close="shopPanel" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="tabs"><button class="tab on" data-tab="life"><svg viewBox="0 0 24 24" class="ic"><path d="M3 12c4-5 11-5 15 0-4 5-11 5-15 0z"/><path d="M18 12l3.5-3v6z"/></svg><span data-i18n="tabLife"></span></button>
+      <button class="tab" data-tab="decor"><svg viewBox="0 0 24 24" class="ic"><path d="M12 21v-8M12 13c-3 0-5-2-5-5M12 13c3 0 5-2 5-5M12 9V4M7 8V5M17 8V5"/></svg><span data-i18n="tabDecor"></span></button></div>
+    <div id="shopGrid" class="grid"></div>
+  </div>
+</div>
+
+<!-- result -->
+<div id="resultPanel" class="sheet hidden">
+  <div class="sheetCard center">
+    <div class="bigPearl"></div>
+    <h3 data-i18n="resultTitle"></h3>
+    <div class="earned"><span data-i18n="earned"></span> <b id="earnedN">+0</b></div>
+    <div class="row">
+      <button id="collectBtn" class="cta"><svg viewBox="0 0 24 24" class="ic"><path d="M5 13l4 4L19 7"/></svg><span data-i18n="collect"></span></button>
+      <button id="toShopBtn" class="cta ghost"><svg viewBox="0 0 24 24" class="ic"><path d="M12 21v-7"/><path d="M12 14c0-3-2-4-2-7a2 2 0 0 1 4 0c0 3-2 4-2 7z"/><path d="M5 21h14"/></svg><span data-i18n="toGrow"></span></button>
+    </div>
+  </div>
+</div>
+
+<div id="startScreen" class="screen">
+  <div class="card">
+    <div class="sample" data-i18n="sample"></div>
+    <h1>BLUE HAVEN</h1>
+    <div class="sub" data-i18n="subtitle"></div>
+    <p class="intro" data-i18n="intro"></p>
+    <button id="startBtn" class="cta"><svg viewBox="0 0 24 24" class="ic"><path d="M12 3v13M6 11l6 6 6-6"/><path d="M4 21h16"/></svg><span data-i18n="start"></span></button>
+    <div class="hintline" id="startHint"></div>
+    <div class="foot"><span data-i18n="provider"></span> · <span data-i18n="musicNote"></span></div>
+  </div>
+</div>
+<div id="fade"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

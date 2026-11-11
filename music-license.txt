@@ -1,0 +1,10 @@
+BLUE HAVEN — music license note
+================================
+All music and sound in BLUE HAVEN is generated procedurally at runtime by this
+project's own code (js/audio.js) using the Web Audio API:
+  - slow underwater pads (A-flat lydian colour, original 4-chord progression)
+  - sparse bell / kalimba-like chimes on a pentatonic scale, partly randomised
+  - ocean hush (filtered brown noise) and occasional bubble "bloops"
+  - game sounds: pearl chimes, feeding bubbles, unlock arpeggio
+No audio files, samples, loops, or third-party / famous melodies are used.
+Created by the project for MOTOR AA. Free to use with the game.
