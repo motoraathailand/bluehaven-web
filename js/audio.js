@@ -1,9 +1,9 @@
 // BLUE HAVEN — procedural underwater ambient music & sound effects (Web Audio API).
 // Everything is synthesised at runtime by this project's own code. No samples, no audio files, no borrowed melodies.
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
-// Original slow progression in A-flat lydian colour (pads), with pentatonic chimes.
-const CHORDS = [[44, 51, 58, 60, 63, 67], [41, 48, 56, 60, 63, 67], [49, 56, 60, 63, 65, 70], [46, 53, 58, 62, 65, 70]];
-const SCALE = [68, 70, 72, 75, 77, 80, 82, 84, 87, 89];
+// Original, very slow deep-sea progression (D dorian/lydian colours), with sparse low chimes.
+const CHORDS = [[38, 45, 52, 57, 62], [36, 43, 50, 55, 64], [41, 48, 55, 57, 64], [34, 41, 50, 53, 60]];
+const SCALE = [62, 64, 65, 69, 71, 74, 76, 77, 81, 83];
 
 export class SeaAudio {
   constructor() { this.ctx = null; this.muted = false; this.started = false; this.game = 0; }
@@ -13,10 +13,10 @@ export class SeaAudio {
     const ctx = this.ctx = new AC(); this.started = true;
     this.master = ctx.createGain(); this.master.gain.value = 0;
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3;
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5200; // gentle "underwater" softening
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600; // gentle "underwater" softening
     this.master.connect(lp).connect(comp).connect(ctx.destination);
     this.master.gain.setTargetAtTime(this.muted ? 0 : 0.75, ctx.currentTime, 2.0);
-    this.reverb = ctx.createConvolver(); this.reverb.buffer = this.impulse(6, 2.2);
+    this.reverb = ctx.createConvolver(); this.reverb.buffer = this.impulse(8, 2.0);
     const rg = ctx.createGain(); rg.gain.value = 0.7; this.reverb.connect(rg).connect(this.master);
     this.delay = ctx.createDelay(2); this.delay.delayTime.value = 0.48;
     const fb = ctx.createGain(); fb.gain.value = 0.42; const dl = ctx.createBiquadFilter(); dl.type = 'lowpass'; dl.frequency.value = 1800;
@@ -25,7 +25,7 @@ export class SeaAudio {
     this.sfx = ctx.createGain(); this.sfx.gain.value = 0.9; this.sfx.connect(this.master); this.sfx.connect(this.reverb);
     // ocean hush: brown noise, low-passed, slowly swelling
     const n = ctx.createBufferSource(); n.buffer = this.noise(8, true); n.loop = true;
-    const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 340; const ng = ctx.createGain(); ng.gain.value = 0.22;
+    const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 210; const ng = ctx.createGain(); ng.gain.value = 0.26;
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07; const lg = ctx.createGain(); lg.gain.value = 0.09; lfo.connect(lg).connect(ng.gain); lfo.start();
     const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.05; const lg2 = ctx.createGain(); lg2.gain.value = 120; lfo2.connect(lg2).connect(nf.frequency); lfo2.start();
     n.connect(nf).connect(ng).connect(this.master); n.start();
@@ -38,7 +38,7 @@ export class SeaAudio {
   setGame(on) { this.game = on ? 1 : 0; }
 
   pad(t, midi, dur, gain) {
-    const c = this.ctx, f = mtof(midi), g = c.createGain(), lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520 + Math.random() * 300; lp.Q.value = 0.6;
+    const c = this.ctx, f = mtof(midi), g = c.createGain(), lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 320 + Math.random() * 200; lp.Q.value = 0.6;
     const lf = c.createOscillator(); lf.frequency.value = 0.1 + Math.random() * 0.1; const lfg = c.createGain(); lfg.gain.value = 180; lf.connect(lfg).connect(lp.frequency); lf.start(t); lf.stop(t + dur + 6);
     for (const [type, det] of [['sine', -5], ['triangle', 5], ['sine', 1200]]) { const o = c.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = det; const og = c.createGain(); og.gain.value = det === 1200 ? 0.12 : 0.5; o.connect(og).connect(lp); o.start(t); o.stop(t + dur + 6); }
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 3.5); g.gain.setValueAtTime(gain, t + dur); g.gain.linearRampToValueAtTime(0, t + dur + 5.5);
@@ -58,17 +58,29 @@ export class SeaAudio {
   schedule() {
     const c = this.ctx; if (!c) return; const now = c.currentTime, ahead = now + 0.6;
     while (this.nextBar < ahead) {
-      const ch = CHORDS[this.chord % CHORDS.length], dur = 10;
+      const ch = CHORDS[this.chord % CHORDS.length], dur = 15;
       ch.forEach((m, i) => this.pad(this.nextBar + i * 0.25, m, dur, i === 0 ? 0.05 : 0.026));
       this.chord++; this.nextBar += dur;
     }
     while (this.nextNote < ahead) {
       let idx = this.lastIdx + Math.round((Math.random() - 0.5) * 4); idx = Math.max(0, Math.min(SCALE.length - 1, idx)); this.lastIdx = idx;
-      this.bell(this.nextNote, SCALE[idx], 0.05 + 0.03 * this.game);
+      this.bell(this.nextNote, SCALE[idx], 0.035 + 0.03 * this.game);
       if (Math.random() < 0.3) this.bell(this.nextNote + 0.18, SCALE[Math.min(SCALE.length - 1, idx + 2)], 0.035);
-      this.nextNote += (this.game ? 0.9 : 1.8) + Math.random() * (this.game ? 1.2 : 3.2);
+      this.nextNote += (this.game ? 1.0 : 3.0) + Math.random() * (this.game ? 1.4 : 5.0);
     }
-    while (this.nextBubble < ahead) { const k = 1 + Math.floor(Math.random() * 4); for (let i = 0; i < k; i++) this.bubble(this.nextBubble + i * (0.06 + Math.random() * 0.1), 0.018 + Math.random() * 0.02); this.nextBubble += 3 + Math.random() * 7; }
+    while (this.nextBubble < ahead) { const k = 1 + Math.floor(Math.random() * 4); for (let i = 0; i < k; i++) this.bubble(this.nextBubble + i * (0.06 + Math.random() * 0.1), 0.018 + Math.random() * 0.02); this.nextBubble += 5 + Math.random() * 9; }
+    if (!this.nextWhale) this.nextWhale = now + 12;
+    if (this.nextWhale < ahead) { this.whale(this.nextWhale); this.nextWhale += 28 + Math.random() * 30; }
+  }
+  // soft, distant whale-like call: gliding sines through a vowel-ish band filter
+  whale(t) {
+    const c = this.ctx, base = 150 + Math.random() * 80, dur = 3.5 + Math.random() * 2.5, g = c.createGain(), bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 520; bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(420, t); bp.frequency.linearRampToValueAtTime(780, t + dur * 0.6); bp.frequency.linearRampToValueAtTime(380, t + dur);
+    for (const [mul, gn] of [[1, 0.6], [2.01, 0.3], [3.0, 0.12]]) { const o = c.createOscillator(); o.type = 'sine'; const f = base * mul; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (1.35 + Math.random() * 0.2), t + dur * 0.55); o.frequency.exponentialRampToValueAtTime(f * 0.92, t + dur);
+      const v = c.createOscillator(); v.frequency.value = 4.5; const vg = c.createGain(); vg.gain.value = f * 0.006; v.connect(vg).connect(o.frequency); v.start(t); v.stop(t + dur + 0.2);
+      const og = c.createGain(); og.gain.value = gn; o.connect(og).connect(bp); o.start(t); o.stop(t + dur + 0.2); }
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05, t + dur * 0.3); g.gain.linearRampToValueAtTime(0.035, t + dur * 0.7); g.gain.linearRampToValueAtTime(0, t + dur);
+    bp.connect(g); g.connect(this.reverb); const dry = c.createGain(); dry.gain.value = 0.3; g.connect(dry).connect(this.music);
   }
   // ---- events ----
   pearl(combo = 0, golden = false) { if (!this.ctx) return; const t = this.ctx.currentTime; const m = SCALE[Math.min(SCALE.length - 1, combo % SCALE.length)] + (combo >= SCALE.length ? 0 : 0); this.bell(t, m, 0.11, this.sfx); this.bubble(t, 0.04, 400); if (golden) { this.bell(t + 0.09, m + 7, 0.09, this.sfx); this.bell(t + 0.18, m + 12, 0.07, this.sfx); } }

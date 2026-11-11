@@ -1,6 +1,6 @@
 # BLUE HAVEN — first sample
 
-A calm underwater healing game for the web (three.js r170, vendored). Play gentle minigames,
+A calm deep-sea healing game for the web (three.js r170, vendored). Play gentle minigames,
 gather pearls, and invite new sea life and decorations into your own sea. Progress is saved
 in the browser (localStorage).
 
