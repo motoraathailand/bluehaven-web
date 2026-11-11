@@ -2,8 +2,8 @@
 // Bodies are built in code (volumetric bodies, separate fins, eyes); motion = vertex-shader spine wave + true 3D steering.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, noise3, sandHeight, setGlow } from './common.js?v=r1';
-import { obstacles } from './env.js?v=r1';
+import { U, rng, noise3, sandHeight, setGlow } from './common.js?v=r2';
+import { obstacles } from './env.js?v=r2';
 
 const C = (h) => new THREE.Color(h);
 const tmpC = new THREE.Color();
@@ -97,12 +97,12 @@ export function swimMaterial(o = {}) {
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         float vdist = length(vViewPosition);
         float frr = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 2.2);
-        { float gl = vGlowV * (0.84 + 0.16 * sin(uTime * 0.9 + vOP.z * 3.0 + vSeed * 6.28)) * uGlowStr * (1.0 - 0.72 * smoothstep(7.0, 24.0, vdist));
+        { float gl = vGlowV * (0.84 + 0.16 * sin(uTime * 0.9 + vOP.z * 3.0 + vSeed * 6.28)) * uGlowStr * (1.0 - 0.5 * smoothstep(9.0, 32.0, vdist));
           totalEmissiveRadiance += diffuseColor.rgb * (gl + uSelf * (0.6 + 0.4 * frr));
           totalEmissiveRadiance += vec3(0.5, 0.78, 1.0) * vFlash * (0.18 + 0.9 * frr); }`)
       .replace('#include <opaque_fragment>', `
         outgoingLight += uRimCol * frr * 1.1 + uSheen * frr * (0.7 + 0.3 * sin(vOP.z * 9.0 + uTime * 0.6));
-        outgoingLight *= mix(vec3(1.0), vec3(0.6, 0.84, 1.0), 1.0 - exp(-vdist * 0.045));
+        outgoingLight *= mix(vec3(1.0), vec3(0.72, 0.92, 1.05), 1.0 - exp(-0.6 * vdist * 0.045));
         #include <opaque_fragment>`);
   };
   mat.customProgramCacheKey = () => 'swim' + mode + (o.paintF ?? 14) + '_' + (o.self ?? 0.07);
@@ -513,7 +513,7 @@ export class Swimmers extends Mover {
 }
 
 // DUMBO OCTOPUS — group models, 3D drifting, ear-fin flapping, web pulses
-const deepLite = (mat) => { mat.onBeforeCompile = (sh) => { sh.uniforms.uRimCol = U.uRimCol; sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRimCol;').replace('#include <opaque_fragment>', `{ float fr = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 2.2); outgoingLight += uRimCol * fr * 1.2 + vec3(0.25, 0.08, 0.12) * fr; outgoingLight *= mix(vec3(1.0), vec3(0.6, 0.84, 1.0), 1.0 - exp(-length(vViewPosition) * 0.045)); }\n#include <opaque_fragment>`); }; mat.customProgramCacheKey = () => 'deepLite'; return mat; };
+const deepLite = (mat) => { mat.onBeforeCompile = (sh) => { sh.uniforms.uRimCol = U.uRimCol; sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRimCol;').replace('#include <opaque_fragment>', `{ float fr = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 2.2); outgoingLight += uRimCol * fr * 1.2 + vec3(0.25, 0.08, 0.12) * fr; outgoingLight *= mix(vec3(1.0), vec3(0.72, 0.92, 1.05), 1.0 - exp(-0.6 * length(vViewPosition) * 0.045)); }\n#include <opaque_fragment>`); }; mat.customProgramCacheKey = () => 'deepLite'; return mat; };
 function vcol(g, fn) { const p = g.attributes.position, c = new Float32Array(p.count * 3); for (let i = 0; i < p.count; i++) { fn(tmpC, p.getX(i), p.getY(i), p.getZ(i)); c.set([tmpC.r, tmpC.g, tmpC.b], i * 3); } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); if (g.attributes.uv) g.deleteAttribute('uv'); return g; }
 function dumboModel() {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);

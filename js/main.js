@@ -6,11 +6,11 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { U, rng, sandHeight } from './common.js?v=r1';
-import * as E from './env.js?v=r1';
-import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r1';
-import { SeaAudio } from './audio.js?v=r1';
-import { LANGS, detectLang, setLang, getLang, t } from './i18n.js?v=r1';
+import { U, rng, sandHeight } from './common.js?v=r2';
+import * as E from './env.js?v=r2';
+import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r2';
+import { SeaAudio } from './audio.js?v=r2';
+import { LANGS, detectLang, setLang, getLang, t } from './i18n.js?v=r2';
 
 const qs = new URLSearchParams(location.search);
 const SHOT = qs.has('shot'), DEMO = qs.has('demo');
@@ -28,23 +28,23 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPrefer
 const maxPR = LOW ? 0.8 : QUALITY === 'mid' ? Math.min(devicePixelRatio, 1.5) : Math.min(devicePixelRatio, 2);
 let pixelRatio = HQ ? Math.min(devicePixelRatio, 1.5) : Math.min(maxPR, LOW ? 0.8 : 1.1);
 renderer.setPixelRatio(pixelRatio);
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.45;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const prRef = { value: pixelRatio };
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(E.PAL.mid.clone(), 0.034);
+scene.fog = new THREE.FogExp2(E.PAL.mid.clone(), 0.021);
 const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1200);
 
 // ---------- environment ----------
 const backdrop = E.makeBackdrop(); scene.add(backdrop);
 scene.add(E.makeSilt(LOW ? 110 : HQ ? 220 : 160));
-const hemi = new THREE.HemisphereLight('#1c3466', '#06070e', 0.55); scene.add(hemi);
-const moon = new THREE.DirectionalLight('#5a78c0', 0.35); moon.position.set(-10, 60, 8); scene.add(moon);
+const hemi = new THREE.HemisphereLight('#4a86c8', '#14222e', 1.15); scene.add(hemi);
+const moon = new THREE.DirectionalLight('#7aa4e0', 0.9); moon.position.set(-10, 60, 8); scene.add(moon);
 // soft light that travels with the viewer + a gentle glowing guide orb, so the abyss stays calm and readable
 const camLight = new THREE.PointLight('#a8c0ff', 11, 30, 1.3); scene.add(camLight);
 const orb = new THREE.Group(); scene.add(orb);
-orb.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 14), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.95, 1.25, 1.45) })));
+orb.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 14), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.62, 0.84, 0.98) })));
 const orbLight = new THREE.PointLight('#9fe8ff', 14, 16, 1.4); orb.add(orbLight);
 const orbHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(200,245,255,0.9)'); gr.addColorStop(0.35, 'rgba(120,210,255,0.25)'); gr.addColorStop(1, 'rgba(80,160,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx; })(), blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
 orbHalo.scale.setScalar(1.0); orb.add(orbHalo);
@@ -113,7 +113,7 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const fxaa = new ShaderPass(FXAAShader);
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, res: { value: new THREE.Vector2(1, 1) }, vig: { value: 0.55 }, kuw: { value: 1 }, edges: { value: 1 }, brush: { value: 1.0 }, sat: { value: 1.1 }, contrast: { value: 1.04 }, blackPt: { value: 0.006 } },
+  uniforms: { tDiffuse: { value: null }, res: { value: new THREE.Vector2(1, 1) }, vig: { value: 0.4 }, kuw: { value: 1 }, edges: { value: 1 }, brush: { value: 1.0 }, sat: { value: 1.1 }, contrast: { value: 1.1 }, blackPt: { value: 0.0 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform vec2 res; uniform float vig, kuw, edges, brush, sat, contrast, blackPt; varying vec2 vUv;
@@ -187,8 +187,9 @@ function resize() {
 addEventListener('resize', resize); resize();
 
 // ---------- camera rig ----------
-const cam = { yaw: 0.55, pitch: 0.1, dist: 24, tYaw: 0.55, tPitch: 0.1, tDist: 24, target: new THREE.Vector3(0, 5.5, 0), tTarget: new THREE.Vector3(0, 5.5, 0), idle: 0, follow: null, fYaw: 0.9 };
-if (innerHeight > innerWidth) { cam.dist = cam.tDist = 30; }
+const homeD = () => { const g = groups.lantern || groups.hatchet, n = g ? g.n : 100; return THREE.MathUtils.clamp(4.5 + Math.sqrt(n) * 0.75, 8, 14) * (innerHeight > innerWidth ? 1 : 0.9); }, homeT = new THREE.Vector3();
+const cam = { home: true, yaw: 0.55, pitch: 0.1, dist: 24, tYaw: 0.55, tPitch: 0.1, tDist: 24, target: new THREE.Vector3(0, 5.5, 0), tTarget: new THREE.Vector3(0, 5.5, 0), idle: 0, follow: null, fYaw: 0.9 };
+cam.dist = cam.tDist = homeD();
 const ST = { mode: 'title', mg: null };
 const audio = new SeaAudio();
 try { audio.muted = localStorage.getItem('bluehaven.muted') === '1'; } catch (e) {}
@@ -265,7 +266,7 @@ function buy(kind, id) {
   closeSheets(); audio.unlock();
   if (kind === 'decor') {
     save.decor[id] = 1; placeDecor(id, true); stopFollow();
-    cam.tTarget.copy(DECOR[id].focus); cam.tDist = DECOR[id].dist; cam.tPitch = 0.28; cam.idle = -6;
+    cam.home = false; cam.tTarget.copy(DECOR[id].focus); cam.tDist = DECOR[id].dist; cam.tPitch = 0.28; cam.idle = -6;
     toast(t('dc_' + id), t('newDecor'));
   } else {
     const sp = SPECIES[id], n = save.counts[id] || 0, add = n === 0 ? (id === 'lantern' ? sp.start : sp.step) : Math.min(sp.step, sp.max - n);
@@ -288,7 +289,7 @@ document.querySelectorAll('[data-game]').forEach(b => b.onclick = () => startMin
 
 // ---------- follow ----------
 function startFollow(g, i) { cam.follow = { g, i }; cam.fYaw = 0.9; $('followChip').classList.remove('hidden'); $('followName').textContent = t('following') + ' · ' + t('sp_' + g.id); }
-function stopFollow() { if (!cam.follow) return; cam.follow = null; $('followChip').classList.add('hidden'); cam.tTarget.set(0, 5.5, 0); cam.tDist = innerHeight > innerWidth ? 30 : 25; }
+function stopFollow() { if (!cam.follow) return; cam.follow = null; $('followChip').classList.add('hidden'); cam.tTarget.set(0, 5.5, 0); cam.tDist = homeD(); cam.home = true; }
 $('stopFollow').onclick = () => { stopFollow(); audio.tap(); };
 
 // ---------- picking ----------
@@ -407,7 +408,7 @@ function startMinigame(kind) {
   closeSheets(); stopFollow();
   ST.mg = kind; Object.assign(mgState, { time: 0, dur: kind === 'pearls' ? 40 : 35, score: 0, spawn: 0, combo: 0, food: [], bites: 0 });
   pearls.length = 0; $('mgScore').textContent = '0'; $('mgHud').classList.remove('hidden'); $('dock').classList.add('hidden'); $('hint').classList.add('hidden');
-  cam.tTarget.set(0, kind === 'pearls' ? 6 : 5, 0); cam.tDist = kind === 'pearls' ? 17 : 20; cam.tPitch = kind === 'pearls' ? 0.05 : 0.18;
+  cam.home = false; cam.tTarget.set(0, kind === 'pearls' ? 6 : 5, 0); cam.tDist = kind === 'pearls' ? 17 : 20; cam.tPitch = kind === 'pearls' ? 0.05 : 0.18;
   audio.setGame(true); audio.tap();
   toast(t(kind === 'pearls' ? 'mg1' : 'mg2'), t(kind === 'pearls' ? 'mg1d' : 'mg2d'));
 }
@@ -419,7 +420,7 @@ function endMinigame() {
   $('toast').classList.add('hidden');
 }
 $('mgEnd').onclick = endMinigame;
-function collect(thenShop) { const e = +($('resultPanel').dataset.earned || 0); $('resultPanel').dataset.earned = 0; save.pearls += e; save.plays = (save.plays || 0) + 1; persist(); setPearls(true); closeSheets(); $('dock').classList.remove('hidden'); audio.tap(); if (thenShop) openSheet('shopPanel'); cam.tTarget.set(0, 5.5, 0); cam.tDist = innerHeight > innerWidth ? 30 : 25; }
+function collect(thenShop) { const e = +($('resultPanel').dataset.earned || 0); $('resultPanel').dataset.earned = 0; save.pearls += e; save.plays = (save.plays || 0) + 1; persist(); setPearls(true); closeSheets(); $('dock').classList.remove('hidden'); audio.tap(); if (thenShop) openSheet('shopPanel'); cam.tTarget.set(0, 5.5, 0); cam.tDist = homeD(); cam.home = true; }
 $('collectBtn').onclick = () => collect(false); $('toShopBtn').onclick = () => collect(true);
 
 function updateMinigame(dt) {
@@ -452,7 +453,7 @@ function startPlay() {
   audio.start(); audio.setMuted(audio.muted);
   $('startScreen').classList.add('hidden'); ST.mode = 'play';
   $('dock').classList.remove('hidden'); $('hint').classList.remove('hidden'); setTimeout(() => $('hint').classList.add('hidden'), 9000);
-  cam.tDist = innerHeight > innerWidth ? 30 : 24; cam.tPitch = 0.1;
+  cam.tDist = homeD(); cam.tPitch = 0.1; cam.home = true;
 }
 $('startBtn').onclick = startPlay;
 
@@ -518,6 +519,7 @@ function tick(dt) {
     camPos.y = Math.max(camPos.y, sandHeight(camPos.x, camPos.z) + 0.8);
     camera.position.lerp(camPos, Math.min(1, dt * 1.8));
   } else {
+    if (cam.home && !ST.mg && ctx.schoolC) { { const sg = groups.lantern || groups.hatchet; homeT.set(0, 5.5, 0).lerp(ctx.schoolC, 0.92); if (sg && sg.V) homeT.addScaledVector(sg.V, 0.85); } cam.tTarget.copy(homeT); if (!camInit) { cam.target.copy(homeT); cam.dist = cam.tDist = homeD(); } }
     cam.target.lerp(cam.tTarget, Math.min(1, dt * 1.2));
     camPos.set(Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist, Math.sin(cam.pitch) * cam.dist, Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist).add(cam.target);
     camPos.y += Math.sin(time * 0.4) * 0.15;
@@ -533,7 +535,7 @@ function tick(dt) {
   tmp2.set(Math.sin(time * 0.23) * 3.2, 2.6 + Math.sin(time * 0.31) * 0.7, Math.cos(time * 0.19) * 3.2).add(cam.target);
   if (cam.follow) tmp2.add(tmp.set(Math.sin(time * 0.2) * 3.5, 2.6, Math.cos(time * 0.2) * 3.5).multiplyScalar(Math.max(1, cam.follow.g.sp.len * 0.35)));
   if (ST.mg === 'pearls') tmp2.copy(camera.position).lerp(cam.target, 0.35).add(tmp.set(0, 2.5, 0));
-  orbPos.lerp(tmp2, Math.min(1, dt * 0.8)); orb.position.copy(orbPos); orbLight.intensity = 12 + Math.sin(time * 1.7) * 2; { const od = orbPos.distanceTo(camera.position); orbHalo.material.opacity = 0.6 * THREE.MathUtils.smoothstep(od, 2.5, 7); orb.children[0].visible = od > 1.2; }
+  orbPos.lerp(tmp2, Math.min(1, dt * 0.8)); orb.position.copy(orbPos); orbLight.intensity = 12 + Math.sin(time * 1.7) * 2; { const od = orbPos.distanceTo(camera.position); orbHalo.material.opacity = 0.42 * THREE.MathUtils.smoothstep(od, 2.5, 7); orb.children[0].visible = od > 1.2; }
   snow.material.uniforms.uCam.value.copy(camera.position);
   shafts.userData.update(camera);
 }
@@ -542,7 +544,7 @@ function tick(dt) {
 window.__bh = {
   start: startPlay, openShop: (tab) => { if (tab) { shopTab = tab; document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.tab === tab)); } openSheet('shopPanel'); }, openGames: () => openSheet('openGames' && 'gamesPanel'),
   mg: startMinigame, end: endMinigame, follow: (id, i = 0) => { if (groups[id]) startFollow(groups[id], i); },
-  view: (yaw, pitch, dist, x, y, z) => { cam.yaw = cam.tYaw = yaw; cam.pitch = cam.tPitch = pitch; cam.dist = cam.tDist = dist; cam.target.set(x, y, z); cam.tTarget.set(x, y, z); camInit = false; cam.idle = -1e9; },
+  view: (yaw, pitch, dist, x, y, z) => { cam.home = false; cam.yaw = cam.tYaw = yaw; cam.pitch = cam.tPitch = pitch; cam.dist = cam.tDist = dist; cam.target.set(x, y, z); cam.tTarget.set(x, y, z); camInit = false; cam.idle = -1e9; },
   tapAllPearls: () => { for (const pl of pearls) { const s = toScreen(pl.p, { x: 0, y: 0, z: 0 }); tapPearl(s.x, s.y); } },
   scene, renderer, composer, bloom, camera, fxaa, grade,
   school: (mode, id = 'lantern', lock = true) => { const g = groups[id]; if (!g) return; g.lock = lock; if (mode === 'turn') g.newHeading(true); else g.setMode(mode); },

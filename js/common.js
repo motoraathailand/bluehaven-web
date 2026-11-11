@@ -4,7 +4,7 @@ import * as THREE from 'three';
 export const U = {
   uTime: { value: 0 },
   uRimCol: { value: new THREE.Color(0.035, 0.07, 0.16) },
-  uGlowStr: { value: 1.0 },
+  uGlowStr: { value: 1.35 },
   uLowQ: { value: 0 },
 };
 
@@ -91,7 +91,7 @@ export function deep(mat, opts = {}) {
       .replace('#include <common>', `#include <common>\nuniform float uTime; uniform float uGlowStr; uniform vec3 uRimCol; uniform vec3 uSheen; varying vec3 vCW;\n${glow ? 'varying float vGlow;' : ''}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         ${glow ? `{ float pulse = 0.8 + 0.2 * sin(uTime * 0.7 + vCW.x * 0.5 + vCW.z * 0.37 + vGlow * 5.0);
-          float farG = 1.0 - 0.65 * smoothstep(8.0, 26.0, length(vViewPosition));
+          float farG = 1.0 - 0.45 * smoothstep(10.0, 34.0, length(vViewPosition));
           totalEmissiveRadiance += diffuseColor.rgb * vGlow * pulse * farG * uGlowStr * ${glow.toFixed(3)}; }` : ''}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         { vec3 q = vCW * 1.7; vec3 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
@@ -103,9 +103,9 @@ export function deep(mat, opts = {}) {
         { vec3 vd = normalize(vViewPosition);
           float fr = pow(1.0 - clamp(abs(dot(normal, vd)), 0.0, 1.0), 2.4);
           outgoingLight += uRimCol * fr * ${rim.toFixed(3)} + uSheen * fr * (0.7 + 0.3 * sin(vCW.x * 3.0 + vCW.y * 4.0 + uTime * 0.5));
-          outgoingLight *= mix(vec3(1.0), vec3(0.6, 0.84, 1.0), 1.0 - exp(-length(vViewPosition) * 0.045)); }
+          outgoingLight *= mix(vec3(1.0), vec3(0.72, 0.92, 1.05), 1.0 - exp(-0.6 * length(vViewPosition) * 0.045)); }
         #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'deepR1' + JSON.stringify({ s: opts.sway, w: opts.swim, r: rim, g: glow, h: !!sheen });
+  mat.customProgramCacheKey = () => 'deepR2' + JSON.stringify({ s: opts.sway, w: opts.swim, r: rim, g: glow, h: !!sheen });
   return mat;
 }

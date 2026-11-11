@@ -1,10 +1,10 @@
 // BLUE HAVEN (deep sea) — environment: abyssal water, silt floor, rocks, bioluminescent plants & corals, vents, particles.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, fbm, noise3, sandHeight, deep, setGlow } from './common.js?v=r1';
+import { U, rng, fbm, noise3, sandHeight, deep, setGlow } from './common.js?v=r2';
 
 export const PAL = {
-  deep: new THREE.Color('#010208'), mid: new THREE.Color('#040b1e'), up: new THREE.Color('#071735'), top: new THREE.Color('#0d2550'),
+  deep: new THREE.Color('#03101f'), mid: new THREE.Color('#0a2c4c'), up: new THREE.Color('#114270'), top: new THREE.Color('#1d6496'),
 };
 export const obstacles = []; // {x,y,z,r}
 const C = (h) => new THREE.Color(h);
@@ -16,11 +16,11 @@ export function makeBackdrop() {
     vertexShader: `varying vec3 vD; void main(){ vD = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
     fragmentShader: `uniform vec3 uDeep, uMid, uUp, uTop; uniform float uTime; varying vec3 vD;
       void main(){ vec3 d = normalize(vD); float y = d.y;
-        vec3 c = mix(uDeep, uMid, smoothstep(-0.6, 0.0, y));
-        c = mix(c, uUp, smoothstep(0.0, 0.7, y));
+        vec3 c = mix(uDeep, uMid, smoothstep(-0.6, -0.02, y));
+        c = mix(c, uUp, smoothstep(0.06, 0.8, y));
         c = mix(c, uTop, smoothstep(0.75, 1.0, y) * 0.8);
         // very faint, soft memory of daylight far above
-        c += vec3(0.02, 0.05, 0.1) * pow(max(y, 0.0), 6.0) * (0.85 + 0.15 * sin(uTime * 0.2));
+        c += vec3(0.05, 0.11, 0.17) * pow(max(y, 0.0), 3.0) * (0.85 + 0.15 * sin(uTime * 0.2));
         gl_FragColor = vec4(c, 1.0); }`,
   });
   const s = new THREE.Mesh(new THREE.SphereGeometry(500, 32, 24), m); s.renderOrder = -10; s.frustumCulled = false; return s;
@@ -29,7 +29,7 @@ export function makeBackdrop() {
 export function makeSilt(seg) {
   const g = new THREE.PlaneGeometry(320, 320, seg, seg); g.rotateX(-Math.PI / 2);
   const pos = g.attributes.position, col = new Float32Array(pos.count * 3);
-  const a = C('#2c3046'), b = C('#1a1c2a'), c = C('#3a3a4c'), d = C('#24304a'), tmp = new THREE.Color();
+  const a = C('#3a4660'), b = C('#253042'), c = C('#4c5468'), d = C('#2c4462'), tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i); pos.setY(i, sandHeight(x, z));
     const n = fbm(x * 0.08, z * 0.08, 3), n2 = fbm(x * 0.4 + 9, z * 0.4, 2);
@@ -348,7 +348,7 @@ export function makeBubbles(n, origin, prRef, height = 22, spread = 0.35, rate =
 export function makeLightShafts(n = 7) {
   const grp = new THREE.Group(), r = rng(808), list = [];
   const mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide,
-    uniforms: { uTime: U.uTime, uCol: { value: C('#5f92d8') }, uStr: { value: 0.11 } },
+    uniforms: { uTime: U.uTime, uCol: { value: C('#7ab4e8') }, uStr: { value: 0.2 } },
     vertexShader: `varying vec2 vUv; varying float vD; varying float vSeed; uniform float uTime;
       void main(){ vUv = uv; vec3 p = position; vSeed = fract(modelMatrix[3].x * 0.137 + modelMatrix[3].z * 0.071);
         p.x += sin(uTime * 0.11 + vSeed * 20.0 + uv.y * 2.0) * 0.6 * (1.0 - uv.y);
@@ -359,13 +359,13 @@ export function makeLightShafts(n = 7) {
       void main(){
         float edge = pow(sin(3.14159 * vUv.x), 2.0);
         float streak = 0.55 + 0.45 * n1(vUv.x * 6.0 + vSeed * 30.0 + uTime * 0.04);
-        float depth = pow(vUv.y, 1.6);                    // strongest high up, fades into the abyss
+        float depth = 0.12 + 0.88 * pow(vUv.y, 1.3);                    // strongest high up, fades into the abyss
         float nearF = smoothstep(2.0, 9.0, vD) * (1.0 - smoothstep(45.0, 80.0, vD));
         float breathe = 0.85 + 0.15 * sin(uTime * 0.15 + vSeed * 12.0);
         gl_FragColor = vec4(uCol * uStr * edge * streak * depth * nearF * breathe, 1.0);
       }` });
   for (let i = 0; i < n; i++) {
-    const w = 2.5 + r() * 4, h = 34;
+    const w = 4 + r() * 6, h = 38;
     const g = new THREE.PlaneGeometry(w, h, 1, 8); g.translate(0, h / 2, 0);
     const m = new THREE.Mesh(g, mat); const a = r() * 6.28, d = 3 + r() * 18;
     m.position.set(Math.cos(a) * d, -2, Math.sin(a) * d); m.userData.tilt = (r() - 0.5) * 0.35; m.renderOrder = 6; m.frustumCulled = false;
