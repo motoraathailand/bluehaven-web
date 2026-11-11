@@ -5,11 +5,11 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { U, rng, sandHeight } from './common.js';
-import * as E from './env.js';
-import { SPECIES, SPECIES_ORDER, InstSpecies, Dumbos, Jellies, CombJellies } from './creatures.js';
-import { SeaAudio } from './audio.js';
-import { LANGS, detectLang, setLang, getLang, t } from './i18n.js';
+import { U, rng, sandHeight } from './common.js?v=deep2';
+import * as E from './env.js?v=deep2';
+import { SPECIES, SPECIES_ORDER, InstSpecies, Dumbos, Jellies, CombJellies } from './creatures.js?v=deep2';
+import { SeaAudio } from './audio.js?v=deep2';
+import { LANGS, detectLang, setLang, getLang, t } from './i18n.js?v=deep2';
 
 const qs = new URLSearchParams(location.search);
 const SHOT = qs.has('shot'), DEMO = qs.has('demo');

@@ -1,8 +1,8 @@
 // BLUE HAVEN (deep sea) — procedural, friendly deep-sea life (all geometry built in code) + gentle boids.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, noise3, sandHeight, deep, setGlow } from './common.js';
-import { obstacles } from './env.js';
+import { U, rng, noise3, sandHeight, deep, setGlow } from './common.js?v=deep2';
+import { obstacles } from './env.js?v=deep2';
 
 const C = (h) => new THREE.Color(h);
 const tmpC = new THREE.Color();
