@@ -1,8 +1,8 @@
 // BLUE HAVEN r5 — theme sets (shipwreck · ruins · crystal cave). Procedural, original geometry. © MOTOR AA
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { rng, sandHeight, deep, setGlow, noise3 } from './common.js?v=r5';
-import { makeRock, obstacles } from './env.js?v=r5';
+import { rng, sandHeight, deep, setGlow, noise3 } from './common.js?v=r6';
+import { makeRock, obstacles } from './env.js?v=r6';
 
 const C = (h) => new THREE.Color(h);
 const mat = deep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), { rim: 0.4, glow: 1.7 });

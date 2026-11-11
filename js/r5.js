@@ -1,7 +1,7 @@
 // BLUE HAVEN r5 — encyclopedia, care & bonding, breeding, visiting events, theme sets / light / music,
 // photo mode, visiting other aquariums, idle rewards & daily quests, sleep mode. © MOTOR AA (no ads, self-made audio)
-import { SETS, SET_ORDER } from './sets.js?v=r5';
-import { TRACKS } from './audio.js?v=r5';
+import { SETS, SET_ORDER } from './sets.js?v=r6';
+import { TRACKS } from './audio.js?v=r6';
 
 const DAY = 86400000, HOUR = 3600000;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -37,7 +37,14 @@ function windows(id, d) {
 const QUESTS = { arcade2: [2, 20], play: [1, 15], feed3: [3, 15], pet10: [10, 15], watch60: [60, 15], photo1: [1, 20], visit1: [1, 20], heart1: [1, 20], pearls60: [60, 20], dex1: [1, 25], event1: [1, 25] };
 
 export function initR5(H) {
-  const { THREE, $, t } = H;
+  const { THREE, $, t, ic, PIC, gesture, pearlN, ring, bar, PEARL } = H;
+  const T = (a, b, pic) => H.toast(a, b, 0, pic);
+  const BH_IC = (b) => b; // behaviour id == icon id
+  const TRACK_IC = { deep: 'wave', lullaby: 'moon', current: 'swirl', glass: 'bloom' };
+  const QIC = { arcade2: 'pad', feed3: 'food', pet10: 'hand', watch60: 'eye', photo1: 'camera', visit1: 'visit', heart1: 'heart', dex1: 'book', event1: 'cal' };
+  const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+  const hhmm = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+  const smallArt = (id) => (H.ART[id] || '');
   const S = () => H.save;
   const ui = { photo: false, sleep: null, visit: null, pet: 0, care: null, petCap: {}, feedT: {} };
   const ctxLite = { threats: [], food: null, schoolC: null, avoid: null };
@@ -64,10 +71,10 @@ export function initR5(H) {
   }
   function buySet(id) {
     const s = S(), owned = sv('sets', []); if (owned.includes(id)) return;
-    if (s.pearls < SETS[id].cost) { H.toast('', t('needMore')); return; }
+    if (s.pearls < SETS[id].cost) { T('', t('needMore'), PIC.need()); return; }
     s.pearls -= SETS[id].cost; owned.push(id); H.setPearls(true); placeSet(id, true); H.closeSheets(); H.audio.unlock();
     const g = setObj[id]; H.stopFollow(); Object.assign(H.cam, { home: false, tPitch: 0.25, idle: -6, tDist: g.userData.dist }); H.cam.tTarget.copy(g.userData.focus);
-    H.toast(t('set_' + id), t('newDecor')); save(); pubSoon();
+    T(t('set_' + id), t('newDecor'), PIC.art(SET_ART[id], ic('spark', 'gold'))); save(); pubSoon();
   }
   const SET_ART = {
     wreck: '<svg viewBox="0 0 96 64" class="art"><path d="M10 40l10 14h52l14-18z" fill="#4a3a30"/><path d="M20 54l4-10h46l-4 10z" fill="#3a2c26"/><path d="M44 40V8l22 16-22 6" fill="none" stroke="#6a5644" stroke-width="3"/><circle cx="30" cy="46" r="2.4" fill="#ffc27a"/><circle cx="50" cy="47" r="2.4" fill="#ffc27a"/><circle cx="74" cy="50" r="4" fill="#ffd070"/></svg>',
@@ -78,22 +85,23 @@ export function initR5(H) {
     const owned = sv('sets', []);
     for (const id of SET_ORDER) {
       const own = owned.includes(id), c = SETS[id].cost, el = document.createElement('div'); el.className = 'item' + (own ? ' owned' : '');
-      el.innerHTML = `<span class="badge">${t('setBadge')}</span>${SET_ART[id]}<div class="nm">${t('set_' + id)}</div><div class="ct">${t('set_' + id + '_d')}</div>`;
-      const b = document.createElement('button'); b.className = 'buy' + (own ? ' done' : S().pearls < c ? ' poor' : '');
-      b.innerHTML = own ? `<svg viewBox="0 0 24 24" class="ic"><path d="M5 13l4 4L19 7"/></svg><span>${t('owned')}</span>` : `<span>${t('place')}</span>${H.PEARL_DOT}<b>${c}</b>`;
+      el.setAttribute('aria-label', t('set_' + id) + ' — ' + t('set_' + id + '_d'));
+      el.innerHTML = `<span class="badge ib">${ic('star')}</span>${SET_ART[id]}<div class="ct"></div>`;
+      const b = document.createElement('button'); b.className = 'buy' + (own ? ' done' : S().pearls < c ? ' poor' : ''); b.setAttribute('aria-label', t('set_' + id) + ' · ' + t(own ? 'owned' : 'place'));
+      b.innerHTML = own ? ic('check') : `${ic('plus')}<span class="sepd"></span>${PEARL}<b>${c}</b>`;
       if (!own) b.onclick = () => buySet(id); el.appendChild(b); grid.appendChild(el);
     }
   }
-  function chips(box, list, cur, label, onPick, swatch) {
-    box.innerHTML = ''; for (const id of list) { const b = document.createElement('button'); b.className = id === cur ? 'on' : ''; b.innerHTML = (swatch ? `<i class="sw" style="background:${swatch[id]}"></i>` : '') + esc(label(id)); b.onclick = () => { onPick(id); H.audio.tap(); }; box.appendChild(b); }
+  function chips(box, list, cur, label, onPick, swatch, html) {
+    box.innerHTML = ''; for (const id of list) { const b = document.createElement('button'); b.className = (id === cur ? 'on' : '') + (swatch || html ? ' icChip' : ''); b.setAttribute('aria-label', label(id)); b.innerHTML = swatch ? `<i class="sw big" style="background:${swatch[id]}"></i>` : html ? html(id) : esc(label(id)); b.onclick = () => { onPick(id); H.audio.tap(); }; box.appendChild(b); }
   }
   function renderShopExtra() {
     const ex = $('shopExtra'); if (!ex || ex.classList.contains('hidden')) return;
-    ex.innerHTML = `<div class="setLbl">${t('lightColor')}</div><div id="lightChips" class="chips"></div><div class="setLbl">${t('bgm')}</div><div id="bgmChips" class="chips"></div><p class="note">${t('musicNote')}</p>`;
+    ex.innerHTML = `<div class="iconSec"><span class="secIc" aria-label="${t('lightColor')}">${ic('bulb')}</span><div id="lightChips" class="chips"></div></div><div class="iconSec"><span class="secIc" aria-label="${t('bgm')}">${ic('note')}</span><div id="bgmChips" class="chips"></div></div>`;
     chips($('lightChips'), Object.keys(LIGHTS), S().light || 'moon', (id) => t('lt_' + id), setLight, LIGHT_SW);
-    chips($('bgmChips'), Object.keys(TRACKS), S().bgm || 'deep', (id) => t('bgm_' + id), setBgm);
+    chips($('bgmChips'), Object.keys(TRACKS), S().bgm || 'deep', (id) => t('bgm_' + id), setBgm, null, (id) => ic(TRACK_IC[id] || 'note'));
   }
-  function renderSettingsExtra() { const b = $('setBgm'); if (b) chips(b, Object.keys(TRACKS), S().bgm || 'deep', (id) => t('bgm_' + id), setBgm); }
+  function renderSettingsExtra() { const b = $('setBgm'); if (b) chips(b, Object.keys(TRACKS), S().bgm || 'deep', (id) => t('bgm_' + id), setBgm, null, (id) => ic(TRACK_IC[id] || 'note')); }
 
   // ---------- tints, babies & breeding ----------
   const key = (id, i) => id + '_' + i;
@@ -107,7 +115,7 @@ export function initR5(H) {
     const s = S(), st = stats(), now = Date.now(), babies = sv('babies', []);
     for (let k = babies.length - 1; k >= 0; k--) { // grown up => joins the family
       const b = babies[k], g = H.groups[b.s], i = babyIdx[b.s]; const sc = babyScale(b); if (g && i !== undefined) g.gmax[i] = sc;
-      if (sc >= 1) { babies.splice(k, 1); delete babyIdx[b.s]; const sp = H.SPECIES[b.s]; s.counts[b.s] = Math.min(sp.max, (s.counts[b.s] || 0) + 1); if (b.r) sv('tint', {})[key(b.s, s.counts[b.s] - 1)] = b.r; if (!silent) H.toast(t('sp_' + b.s), t('babyGrown')); save(); }
+      if (sc >= 1) { babies.splice(k, 1); delete babyIdx[b.s]; const sp = H.SPECIES[b.s]; s.counts[b.s] = Math.min(sp.max, (s.counts[b.s] || 0) + 1); if (b.r) sv('tint', {})[key(b.s, s.counts[b.s] - 1)] = b.r; if (!silent) T(t('sp_' + b.s), t('babyGrown'), PIC.art(smallArt(b.s), ic('rise', 'big'))); save(); }
     }
     const last = st.lb || now; const dh = (now - last) / HOUR; st.lb = now; if (dh <= 0) return;
     for (const id of H.SPECIES_ORDER) {
@@ -116,7 +124,7 @@ export function initR5(H) {
       const vs = DEX[id].v, r = vs.length && Math.random() < 0.1 ? vs[Math.floor(Math.random() * vs.length)] : 0;
       const b = { s: id, b: now - (dh > 1 ? Math.random() * Math.min(dh, 11) * HOUR : 0), r }; babies.push(b); spawnBabies();
       if (r) { const d = dexOf(id); const vi = vs.indexOf(r); d.v |= 1 << vi; }
-      if (!silent) { H.toast(t('babyBorn'), t('sp_' + id) + (r ? ' · ' + t('var_' + r) : '')); H.audio.chime(); }
+      if (!silent) { T(t('babyBorn'), t('sp_' + id) + (r ? ' · ' + t('var_' + r) : ''), PIC.ic('baby', PIC.art(smallArt(id), r ? `<i class="sw big" style="background:${VAR_COL[r]}"></i>` : '', 'sm'))); H.audio.chime(); }
       save(); break;
     }
   }
@@ -126,19 +134,24 @@ export function initR5(H) {
   function dexOf(id) { const d = sv('dex', {}); if (!d[id] || typeof d[id] !== 'object') d[id] = { w: 0, f: 0, s: 0, v: 0 }; return d[id]; }
   function dexUnlocks(id, fromFish) {
     const d = dexOf(id), info = DEX[id]; let news = [];
-    NEED.forEach((nd, k) => { if (d.s & (1 << k)) return; const ok = k < 2 ? ((nd.w && d.w >= nd.w) || (nd.f && d.f >= nd.f)) : (d.w >= nd.w || d.f >= nd.f); if (ok) { d.s |= 1 << k; news.push(t('bh_' + info.b[k])); } });
-    info.v.forEach((v, k) => { if (d.v & (1 << k)) return; const ok = k === 0 ? d.w >= 60 : (d.f >= 15 || (d.f >= 5 && Math.random() < 0.1)); if (ok) { d.v |= 1 << k; news.push(t('var_' + v)); if (fromFish) { const g = H.groups[id]; if (g && g.tint) { g.tint[fromFish.i] = v; sv('tint', {})[key(id, fromFish.i)] = v; } } } });
-    if (news.length) { H.toast(t('dexNew'), t('sp_' + id) + ' · ' + news.join(' · ')); H.audio.unlock(); q('dex1'); save(); }
+    const newIc = []; NEED.forEach((nd, k) => { if (d.s & (1 << k)) return; const ok = k < 2 ? ((nd.w && d.w >= nd.w) || (nd.f && d.f >= nd.f)) : (d.w >= nd.w || d.f >= nd.f); if (ok) { d.s |= 1 << k; news.push(t('bh_' + info.b[k])); newIc.push(ic(info.b[k], 'big')); } });
+    info.v.forEach((v, k) => { if (d.v & (1 << k)) return; const ok = k === 0 ? d.w >= 60 : (d.f >= 15 || (d.f >= 5 && Math.random() < 0.1)); if (ok) { d.v |= 1 << k; news.push(t('var_' + v)); newIc.push(`<i class="sw big" style="background:${VAR_COL[v]}"></i>`); if (fromFish) { const g = H.groups[id]; if (g && g.tint) { g.tint[fromFish.i] = v; sv('tint', {})[key(id, fromFish.i)] = v; } } } });
+    if (news.length) { T(t('dexNew'), t('sp_' + id) + ' · ' + news.join(' · '), PIC.ic('book', PIC.art(smallArt(id), `<span class="tnew">${newIc.join('')}</span>`, 'sm'))); H.audio.unlock(); q('dex1'); save(); }
   }
   function dexDone() { let n = 0, tot = 0; for (const id of H.SPECIES_ORDER) { const d = (S().dex || {})[id], info = DEX[id]; tot += 3 + info.v.length; if (d) { for (let k = 0; k < 3; k++) if (d.s & (1 << k)) n++; for (let k = 0; k < info.v.length; k++) if (d.v & (1 << k)) n++; } } return [n, tot]; }
   function renderDex() {
     const box = $('dexGrid'); box.innerHTML = ''; const [n, tot] = dexDone(); $('dexProg').textContent = `${n} / ${tot}`; $('dexBar').style.width = (100 * n / tot).toFixed(1) + '%';
     for (const id of H.SPECIES_ORDER) {
       const own = (S().counts[id] || 0) > 0, d = (S().dex || {})[id] || { w: 0, f: 0, s: 0, v: 0 }, info = DEX[id], c = document.createElement('div'); c.className = 'dcard' + (own ? '' : ' locked');
-      let rows = info.b.map((b, k) => { const on = d.s & (1 << k), nd = NEED[k]; const hint = k < 2 ? (nd.w ? t('needWatch').replace('{n}', nd.w) : t('needFeed').replace('{n}', nd.f)) : t('needEither').replace('{w}', nd.w).replace('{f}', nd.f);
-        return `<div class="drow${on ? ' on' : ''}"><span>${on ? '✦ ' + t('bh_' + b) : '？ ' + hint}</span>${on && own ? `<button class="mini" data-show="${id}:${b}">${t('showMe')}</button>` : ''}</div>`; }).join('');
-      const vars = info.v.length ? `<div class="dvars">${info.v.map((v, k) => `<span class="vchip${d.v & (1 << k) ? ' on' : ''}"><i style="background:${d.v & (1 << k) ? VAR_COL[v] : 'transparent'}"></i>${d.v & (1 << k) ? t('var_' + v) : '？'}</span>`).join('')}</div>` : '';
-      c.innerHTML = `<div class="dtop">${H.ART[id]}<div><b>${own ? t('sp_' + id) : '???'}</b><div class="dstat">${own ? `${t('watched')} ${Math.floor(d.w / 60)}:${String(Math.floor(d.w % 60)).padStart(2, '0')} · ${t('fed')} ${d.f}` : t('dexLocked')}</div></div></div>${own ? `<p class="dfact">${t('dx_' + id)}</p>` : ''}${rows}${vars}`;
+      c.setAttribute('aria-label', own ? t('sp_' + id) + ' — ' + t('dx_' + id) : t('dexLocked'));
+      const cells = info.b.map((b, k) => { const on = d.s & (1 << k), nd = NEED[k];
+        if (on) return `<div class="bcell on" aria-label="${t('bh_' + b)}">${ring(1, ic(b), 'gold')}${own ? `<button class="mini round play" data-show="${id}:${b}" aria-label="${t('showMe')} · ${t('bh_' + b)}">${H.icFill('play')}</button>` : ''}</div>`;
+        const fr = k < 2 ? (nd.w ? d.w / nd.w : d.f / nd.f) : Math.max(d.w / nd.w, d.f / nd.f);
+        const need = k < 2 ? (nd.w ? `${ic('eye')}<b>${mmss(nd.w)}</b>` : `${ic('food')}<b>${nd.f}</b>`) : `${ic('eye')}<b>${mmss(nd.w)}</b><i>/</i>${ic('food')}<b>${nd.f}</b>`;
+        const hint = k < 2 ? (nd.w ? t('needWatch').replace('{n}', nd.w) : t('needFeed').replace('{n}', nd.f)) : t('needEither').replace('{w}', nd.w).replace('{f}', nd.f);
+        return `<div class="bcell" aria-label="${hint}">${ring(fr, ic('lock'))}<span class="need">${need}</span></div>`; }).join('');
+      const vars = info.v.length ? `<div class="dvars">${info.v.map((v, k) => d.v & (1 << k) ? `<span class="vchip on" aria-label="${t('var_' + v)}"><i style="background:${VAR_COL[v]}"></i></span>` : `<span class="vchip" aria-label="?">${ic('lock')}</span>`).join('')}</div>` : '';
+      c.innerHTML = `<div class="dtop">${H.ART[id]}${own ? `<div class="dstat"><span>${ic('eye')}<b>${mmss(d.w)}</b></span><span>${ic('food')}<b>${d.f}</b></span></div>${vars}` : `<div class="dstat">${ic('lock', 'big')}</div>`}</div>${own ? `<div class="bcells">${cells}</div>` : ''}`;
       box.appendChild(c);
     }
     box.querySelectorAll('[data-show]').forEach((b) => b.onclick = () => { const [id, bh] = b.dataset.show.split(':'); H.closeSheets(); showBehaviour(id, bh); });
@@ -158,26 +171,29 @@ export function initR5(H) {
       const c = T.clone(); let tt = 0; nudges.push({ dur: 6, f: (dt) => { tt += dt; for (let k = 0; k < g.n; k++) { const p = g.pos[k]; let tx, ty, tz; if (bh === 'rise') { tx = p.x; ty = p.y + 1; tz = p.z; } else if (bh === 'gather') { tx = c.x; ty = c.y; tz = c.z; } else { const a = tt * 0.8 + k * 2.1; tx = c.x + Math.cos(a) * 5; ty = c.y + 1; tz = c.z + Math.sin(a) * 5; }
         if (g.tgt) { g.tgt[k].set(tx, ty, tz); g.tgtT[k] = 1; } else { const s = Math.min(1, dt * 0.5); const dx = (tx - p.x) * s, dy = (ty - p.y) * s, dz = (tz - p.z) * s; if (g.shift) g.shift(k, dx, dy, dz); else p.set(p.x + dx, p.y + dy, p.z + dz); } } } });
     }
-    H.audio.chime(); H.toast(t('bh_' + bh), t('sp_' + id));
+    H.audio.chime(); T(t('bh_' + bh), t('sp_' + id), PIC.ic(bh, PIC.art(smallArt(id), '', 'sm')));
   }
 
   // ---------- care & bonding ----------
   const bondOf = (id, i) => (S().bond || {})[key(id, i)] || 0;
   const isBaby = (id, i) => babyIdx[id] === i;
   const nameOf = (id, i) => (S().names || {})[key(id, i)] || '';
-  function addBond(id, i, n) { if (isBaby(id, i) || ui.visit) return; const b = sv('bond', {}), k = key(id, i), was = b[k] || 0; b[k] = clamp(was + n, 0, 100); if (was < 60 && b[k] >= 60) { H.toast(t('bonded'), (nameOf(id, i) || t('sp_' + id)) + ' · ' + t('bondedHint')); H.audio.unlock(); } renderCare(); save(); }
+  function addBond(id, i, n) { if (isBaby(id, i) || ui.visit) return; const b = sv('bond', {}), k = key(id, i), was = b[k] || 0; b[k] = clamp(was + n, 0, 100); if (was < 60 && b[k] >= 60) { T(t('bonded'), (nameOf(id, i) || t('sp_' + id)) + ' · ' + t('bondedHint'), `<span class="tbadge heartB">${H.icFill('heart', 'big', '#ff9ab0')}</span>${PIC.art(smallArt(id), `<span class="tdemo">${gesture('tap')}</span>`, 'sm')}`); H.audio.unlock(); } renderCare(); save(); }
   function bondLabel(v) { return v >= 100 ? t('bond4') : v >= 60 ? t('bond3') : v >= 20 ? t('bond2') : t('bond1'); }
   function renderCare() {
     const c = ui.care, el = $('care'); if (!c) { el.classList.add('hidden'); document.body.classList.remove('caring'); return; }
     const { g, i } = c, id = g.id, v = bondOf(id, i), baby = isBaby(id, i);
     el.classList.remove('hidden'); document.body.classList.add('caring');
-    $('careName').textContent = (nameOf(id, i) || t('sp_' + id)) + (baby ? ' · ' + t('baby') : '');
-    $('careBond').textContent = baby ? t('babyNote') : bondLabel(v) + ' · ' + v + '/100'; $('careBar').style.width = (baby ? 0 : v) + '%';
+    $('careArt').innerHTML = smallArt(id); $('careName').textContent = nameOf(id, i); $('care').setAttribute('aria-label', (nameOf(id, i) || t('sp_' + id)) + (baby ? ' · ' + t('baby') : '') + ' · ' + (baby ? t('babyNote') : bondLabel(v)));
+    const lvl = v >= 100 ? 4 : v >= 60 ? 3 : v >= 20 ? 2 : 1;
+    if (baby) { const b = sv('babies', []).find((x) => x.s === id), gr = b ? babyScale(b) : 0.35; $('careIc').innerHTML = ic('baby', 'big'); $('careBar').style.width = (100 * (gr - 0.35) / 0.65).toFixed(0) + '%'; $('careBond').innerHTML = ic('rise'); }
+    else { $('careIc').innerHTML = `<span class="hearts4">${[1, 2, 3, 4].map((k) => k <= lvl ? H.icFill('heart', '', '#ff9ab0') : ic('heart', 'dim')).join('')}</span>`; $('careBar').style.width = v + '%'; $('careBond').textContent = v; }
+    $('petDemo').innerHTML = !baby && !ui.visit && v < 20 ? gesture('stroke', 'mini') : '';
     $('careNameBtn').classList.toggle('hidden', baby || !!ui.visit); $('careFeed').classList.toggle('hidden', !!ui.visit); $('carePet').classList.toggle('hidden', !!ui.visit);
   }
   function feedCare() {
     const c = ui.care; if (!c) return; const { g, i } = c, id = g.id, k = key(id, i), now = performance.now();
-    if (ui.feedT[k] && now - ui.feedT[k] < 20000) { H.toast('', t('fullTummy')); return; } ui.feedT[k] = now;
+    if (ui.feedT[k] && now - ui.feedT[k] < 20000) { T('', t('fullTummy'), PIC.no('food')); return; } ui.feedT[k] = now;
     H.burst(g.pos[i], 10); H.audio.eat(); const s = H.toScreen(g.pos[i], { x: 0, y: 0, z: 0 }); if (s.z < 1) H.floater(s.x, s.y - 30, '♥ +6', true);
     const d = dexOf(id); d.f++; addBond(id, i, 6); q('feed3'); dexUnlocks(id, { i }); save();
   }
@@ -185,7 +201,7 @@ export function initR5(H) {
     const c = ui.care; if (!c) return; const { g, i } = c, id = g.id, k = key(id, i); ui.petCap[k] = (ui.petCap[k] || 0) + 1; H.audio.tone(76 + (ui.petCap[k] % 5) * 2, 0.04, 0.3);
     H.floater(x, y - 20, '♥', false); q('pet10'); if (ui.petCap[k] <= 25) addBond(id, i, 1); else renderCare();
   }
-  function nameCare() { const c = ui.care; if (!c) return; $('nameInput').value = nameOf(c.g.id, c.i); $('nameFor').textContent = t('sp_' + c.g.id); H.openSheet('namePanel'); setTimeout(() => $('nameInput').focus(), 200); }
+  function nameCare() { const c = ui.care; if (!c) return; $('nameInput').value = nameOf(c.g.id, c.i); $('nameFor').innerHTML = smallArt(c.g.id) + ic('pencil', 'big'); $('nameFor').setAttribute('aria-label', t('nameTitle') + ' · ' + t('sp_' + c.g.id)); H.openSheet('namePanel'); setTimeout(() => $('nameInput').focus(), 200); }
   function saveName() { const c = ui.care; if (!c) return; const v = $('nameInput').value.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 16); const nm = sv('names', {}), k = key(c.g.id, c.i); if (v) nm[k] = v; else delete nm[k]; H.closeSheets(); renderCare(); H.refreshFollow(); save(); }
   function callBonded(p) {
     let n = 0; for (const [k, v] of Object.entries(S().bond || {})) { if (v < 60) continue; const j = k.lastIndexOf('_'), id = k.slice(0, j), i = +k.slice(j + 1), g = H.groups[id]; if (!g || i >= g.n) continue; if (!g.call || g.call.p.distanceTo(p) > 0.01) g.call = { p: p.clone(), t: 9, who: new Set() }; g.call.who.add(i); g.call.t = 9; n++; if (n >= 12) break; }
@@ -233,21 +249,21 @@ export function initR5(H) {
   function onEventSeen(id) {
     if (H.ST.mode !== 'play') { ui.evPending = id; return; }
     const st = stats(), dk = dayKey(); if (!st.ev || st.ev.d !== dk) st.ev = { d: dk, s: [] };
-    if (!st.ev.s.includes(id)) { st.ev.s.push(id); S().pearls += 15; H.setPearls(true); q('event1'); H.toast(t('ev_' + id), t('evArrived') + ' +15'); H.audio.chime(); save(); }
+    if (!st.ev.s.includes(id)) { st.ev.s.push(id); S().pearls += 15; H.setPearls(true); q('event1'); T(t('ev_' + id), t('evArrived') + ' +15', PIC.ic(id, pearlN(15, '+'), 'ev ' + id)); H.audio.chime(); save(); }
   }
   function renderBanner() {
     const live = liveEvents(), b = $('evBanner'); $('railEv').classList.toggle('dot', live.length > 0);
     if (!live.length || ui.photo || ui.sleep || ui.visit || H.ST.mode !== 'play' || H.ST.mg) { b.classList.add('hidden'); return; }
     const e = live[0]; b.classList.remove('hidden');
-    $('evText').textContent = t('ev_' + e.id) + (e.s !== null ? ` · ${t('evUntil')} ${String(Math.floor(e.e / 60) % 24).padStart(2, '0')}:${String(e.e % 60).padStart(2, '0')}` : '');
+    $('evText').innerHTML = `<span class="evIc2 ${e.id}">${ic(e.id, 'big')}</span>` + (e.s !== null ? `<span class="evT">${ic('clock')}<b>${hhmm(e.e)}</b></span>` : ''); b.setAttribute('aria-label', t('ev_' + e.id) + (e.s !== null ? ` · ${t('evUntil')} ${hhmm(e.e)}` : ''));
     $('evWatch').onclick = () => watchEvent(e.id);
   }
   function watchEvent(id) { H.closeSheets(); H.stopFollow(); const c = H.cam; c.home = false; c.idle = -20; ui.watch = id; if (id === 'pod') { c.tTarget.set(0, 13, 0); c.tDist = 30; c.tPitch = -0.12; } else if (id === 'migr') { c.tTarget.set(0, 9, 0); c.tDist = 24; c.tPitch = 0.05; } else { c.tTarget.set(0, 16, 0); c.tDist = 22; c.tPitch = -0.15; } }
   function renderEvents() {
     const live = liveEvents(), box = $('evList'); box.innerHTML = '';
-    if (live.length) box.insertAdjacentHTML('beforeend', live.map((e) => `<div class="evRow live"><i class="evIc ${e.id}"></i><div><b>${t('ev_' + e.id)}</b><p>${t('ev_' + e.id + '_d')}</p></div><button class="mini" data-ev="${e.id}">${t('evWatchBtn')}</button></div>`).join(''));
-    box.insertAdjacentHTML('beforeend', `<div class="setLbl">${t('evNext')}</div>` + upcoming(8).map((e) => `<div class="evRow"><i class="evIc ${e.id}"></i><div><b>${t('ev_' + e.id)}</b><p>${fmtDay(e.s)} · ${fmtTime(e.s)}–${fmtTime(e.e)}</p></div></div>`).join(''));
-    box.insertAdjacentHTML('beforeend', `<p class="note">${t('evNote')}</p>`);
+    const md = (d) => `${d.getMonth() + 1}.${d.getDate()}`;
+    if (live.length) box.insertAdjacentHTML('beforeend', live.map((e) => `<div class="evRow live" aria-label="${t('ev_' + e.id)} — ${t('ev_' + e.id + '_d')}"><span class="evIc2 big ${e.id}">${ic(e.id, 'big')}</span><span class="liveDot"></span><div class="evWhen">${e.s !== null ? `${ic('clock')}<b>${hhmm(e.s)}–${hhmm(e.e)}</b>` : ''}</div><button class="mini round" data-ev="${e.id}" aria-label="${t('evWatchBtn')}">${ic('eye')}</button></div>`).join(''));
+    box.insertAdjacentHTML('beforeend', `<div class="hubSep">${ic('cal')}</div>` + upcoming(8).map((e) => `<div class="evRow" aria-label="${t('ev_' + e.id)} ${fmtDay(e.s)} ${fmtTime(e.s)}–${fmtTime(e.e)}"><span class="evIc2 ${e.id}">${ic(e.id, 'big')}</span><div class="evWhen"><b class="md">${md(e.s)}</b>${ic('clock')}<b>${hhmm(e.s.getHours() * 60 + e.s.getMinutes())}–${hhmm(e.e.getHours() * 60 + e.e.getMinutes() || 1440)}</b></div><span class="evRw">${pearlN(15, '+')}</span></div>`).join(''));
     box.querySelectorAll('[data-ev]').forEach((b) => b.onclick = () => watchEvent(b.dataset.ev));
   }
 
@@ -264,25 +280,26 @@ export function initR5(H) {
   }
   function q(id, n = 1, game) {
     const Q = quests(); let ch = false;
-    for (const it of Q.l) { if (it.id !== id || it.c) continue; if (id === 'play' && game !== it.g) continue; const goal = QUESTS[id][0]; if (it.n < goal) { it.n = Math.min(goal, it.n + n); ch = true; if (it.n >= goal) { H.toast(t('questDone'), questText(it)); H.audio.chime(); } } }
+    for (const it of Q.l) { if (it.id !== id || it.c) continue; if (id === 'play' && game !== it.g) continue; const goal = QUESTS[id][0]; if (it.n < goal) { it.n = Math.min(goal, it.n + n); ch = true; if (it.n >= goal) { T(t('questDone'), questText(it), PIC.ok('quest') + `<span class="tart sm">${qIcon(it)}</span>`); H.audio.chime(); } } }
     if (ch) { save(); renderQuestDot(); if (!$('questPanel').classList.contains('hidden')) renderQuests(); }
   }
+  const qIcon = (it) => it.id === 'play' ? `<span class="qgame">${H.gIcon(it.g)}</span>` : it.id === 'pearls60' ? PEARL : ic(QIC[it.id] || 'quest', 'big');
   const questText = (it) => t('q_' + it.id).replace('{g}', it.g ? t('ga_' + it.g) : '').replace('{n}', QUESTS[it.id][0]);
   function renderQuestDot() { const Q = quests(); $('railQuest').classList.toggle('dot', Q.l.some((it) => !it.c && it.n >= QUESTS[it.id][0]) || (!Q.all && Q.l.every((it) => it.c))); }
   function renderQuests() {
     const Q = quests(), box = $('questList'); box.innerHTML = '';
     for (const it of Q.l) {
       const [goal, rw] = QUESTS[it.id], done = it.n >= goal, row = document.createElement('div'); row.className = 'qrow' + (it.c ? ' claimed' : done ? ' done' : '');
-      row.innerHTML = `<div class="qtxt"><b>${esc(questText(it))}</b><div class="qbar"><i style="width:${100 * Math.min(1, it.n / goal)}%"></i></div><span>${Math.min(it.n, goal)} / ${goal}</span></div>`;
+      row.setAttribute('aria-label', questText(it)); row.innerHTML = `<span class="qic">${qIcon(it)}${it.id === 'arcade2' ? '<b class="qx">×2</b>' : ''}</span><div class="qtxt"><div class="qbar"><i style="width:${100 * Math.min(1, it.n / goal)}%"></i></div><span class="num">${it.id === 'watch60' ? mmss(Math.min(it.n, goal)) + ' / ' + mmss(goal) : Math.min(it.n, goal) + ' / ' + goal}</span></div>`;
       const b = document.createElement('button'); b.className = 'cta small' + (done && !it.c ? '' : ' ghost'); b.disabled = !done || !!it.c;
       b.innerHTML = it.c ? `<svg viewBox="0 0 24 24" class="ic"><path d="M5 13l4 4L19 7"/></svg>` : `${H.PEARL_DOT}<b>+${rw}</b>`;
       b.onclick = () => { if (!done || it.c) return; it.c = 1; S().pearls += rw; H.setPearls(true); H.audio.pearl(3, true); save(); renderQuests(); renderQuestDot(); };
       row.appendChild(b); box.appendChild(row);
     }
     const allDone = Q.l.every((it) => it.c), ab = document.createElement('button'); ab.className = 'cta' + (allDone && !Q.all ? '' : ' ghost'); ab.disabled = !allDone || !!Q.all;
-    ab.innerHTML = `<span>${Q.all ? t('allClaimed') : t('allBonus')}</span>${Q.all ? '' : H.PEARL_DOT + '<b>+30</b>'}`; ab.onclick = () => { if (!allDone || Q.all) return; Q.all = 1; S().pearls += 30; H.setPearls(true); H.audio.unlock(); save(); renderQuests(); renderQuestDot(); };
+    ab.setAttribute('aria-label', Q.all ? t('allClaimed') : t('allBonus')); ab.innerHTML = Q.all ? `${ic('gift', 'big')}${ic('check')}` : `${ic('gift', 'big')}<span class="sepd"></span>${PEARL}<b>+30</b>`; ab.onclick = () => { if (!allDone || Q.all) return; Q.all = 1; S().pearls += 30; H.setPearls(true); H.audio.unlock(); save(); renderQuests(); renderQuestDot(); };
     box.appendChild(ab);
-    const rate = idleRate(); $('idleInfo').textContent = t('idleInfo').replace('{r}', rate).replace('{c}', IDLE_CAP_H);
+    const rate = idleRate(); $('idleInfo').setAttribute('aria-label', t('idleInfo').replace('{r}', rate).replace('{c}', IDLE_CAP_H)); $('idleInfo').innerHTML = `<span class="idleBox">${ic('hourglass', 'big')}${pearlN(rate, '+')}<span class="per">/</span>${ring(1 / IDLE_CAP_H, '1', 'sm')}</span><span class="idleBox">${ic('chevR')}${ring(1, String(IDLE_CAP_H), 'sm gold')}</span>`;
   }
   const IDLE_CAP_H = 8;
   function idleRate() { let n = 0; for (const v of Object.values(S().counts || {})) n += v; return Math.min(30, 6 + Math.floor(n / 12) + (S().sets || []).length * 2); }
@@ -295,7 +312,7 @@ export function initR5(H) {
   function showIdle() {
     const I = ui.idle; if (!I) return; if (H.ST.mode !== 'play') { ui.idleWait = true; return; }
     const h = Math.floor(I.hrs), m = Math.floor((I.hrs - h) * 60);
-    $('idleAway').textContent = t('idleAway').replace('{t}', (h ? h + t('hShort') + ' ' : '') + m + t('mShort')); $('idleN').textContent = '+' + I.n; $('idleCap').classList.toggle('hidden', I.hrs < IDLE_CAP_H);
+    $('idleAway').setAttribute('aria-label', t('idleAway').replace('{t}', (h ? h + t('hShort') + ' ' : '') + m + t('mShort'))); $('idleAway').innerHTML = ring(Math.min(1, I.hrs / IDLE_CAP_H), `<b>${h}:${String(m).padStart(2, '0')}</b>`, 'lg' + (I.hrs >= IDLE_CAP_H ? ' gold' : '')); $('idleN').textContent = '+' + I.n; $('idleCap').classList.add('hidden');
     H.closeSheets(); $('idlePanel').classList.remove('hidden');
   }
   $('idleClaim').onclick = () => { const I = ui.idle; if (!I) return; ui.idle = null; S().pearls += I.n; H.setPearls(true); H.audio.pearl(4, true); $('idlePanel').classList.add('hidden'); save(); };
@@ -306,8 +323,9 @@ export function initR5(H) {
     H.closeSheets(); ui.photo = true; document.body.classList.add('photo'); $('photoUI').classList.remove('hidden'); H.cam.idle = -1e9; H.cam.home = false;
     $('camUp').value = H.cam.tTarget.y.toFixed(1);
     renderFilters(); $('photoPrev').classList.add('hidden'); renderBanner();
+    const pd = $('photoDemo'); pd.innerHTML = `<div class="pd1">${gesture('drag')}</div><div class="pd2">${gesture('tap')}</div>`; pd.classList.remove('hidden'); clearTimeout(enterPhoto.tm); enterPhoto.tm = setTimeout(() => pd.classList.add('hidden'), H.SHOT ? 1e9 : 5000);
   }
-  function renderFilters() { const box = $('filterChips'); chips(box, Object.keys(FILTERS), filter, (id) => t('fx_' + id), (id) => { filter = id; H.canvas.style.filter = FILTERS[id]; renderFilters(); }); }
+  function renderFilters() { const box = $('filterChips'); chips(box, Object.keys(FILTERS), filter, (id) => t('fx_' + id), (id) => { filter = id; H.canvas.style.filter = FILTERS[id]; renderFilters(); }, null, (id) => `<i class="fsw" style="filter:${FILTERS[id] || 'none'}"></i>`); }
   function exitPhoto() { ui.photo = false; document.body.classList.remove('photo'); $('photoUI').classList.add('hidden'); H.canvas.style.filter = ''; H.cam.idle = 0; H.cam.home = true; H.cam.tDist = H.homeD(); renderBanner(); }
   function shoot() {
     H.renderNow(); const src = H.renderer.domElement, w = src.width, h = src.height, c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
@@ -318,7 +336,7 @@ export function initR5(H) {
     stats().photos = (stats().photos || 0) + 1; q('photo1');
   }
   const shotName = () => 'bluehaven-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.png';
-  $('photoSave').onclick = () => { if (!lastShot) return; const a = document.createElement('a'); a.href = URL.createObjectURL(lastShot); a.download = shotName(); document.body.appendChild(a); a.click(); a.remove(); H.toast('', t('photoSaved')); };
+  $('photoSave').onclick = () => { if (!lastShot) return; const a = document.createElement('a'); a.href = URL.createObjectURL(lastShot); a.download = shotName(); document.body.appendChild(a); a.click(); a.remove(); T('', t('photoSaved'), PIC.ok('download')); };
   $('photoShare').onclick = async () => { if (!lastShot) return; try { await navigator.share({ files: [new File([lastShot], shotName(), { type: 'image/png' })], title: 'BLUE HAVEN', text: t('shareText') }); } catch (e) {} };
   $('photoClosePrev').onclick = () => $('photoPrev').classList.add('hidden');
   $('shutter').onclick = shoot; $('photoExit').onclick = exitPhoto;
@@ -329,7 +347,7 @@ export function initR5(H) {
     H.closeSheets(); H.stopFollow(); ui.sleep = { left: 30 * 60, total: 30 * 60, fade: 0, idleUI: 0, frame: 0, exp: H.renderer.toneMappingExposure, glow: H.U.uGlowStr.value };
     document.body.classList.add('sleep'); $('sleepUI').classList.remove('hidden'); H.audio.setTrack('lullaby'); H.cam.home = true; H.cam.tPitch = 0.16; H.cam.tDist = H.homeD() * 1.25; renderSleep(); renderBanner();
   }
-  function renderSleep() { const s = ui.sleep; if (!s) return; chips($('sleepChips'), ['15', '30', '60', 'inf'], s.total === Infinity ? 'inf' : String(s.total / 60), (k) => k === 'inf' ? t('sleepInf') : k + t('mShort'), (k) => { s.total = s.left = k === 'inf' ? Infinity : +k * 60; s.fade = 0; renderSleep(); }); updSleepTime(); }
+  function renderSleep() { const s = ui.sleep; if (!s) return; chips($('sleepChips'), ['15', '30', '60', 'inf'], s.total === Infinity ? 'inf' : String(s.total / 60), (k) => k === 'inf' ? t('sleepInf') : k + t('mShort'), (k) => { s.total = s.left = k === 'inf' ? Infinity : +k * 60; s.fade = 0; renderSleep(); }, null, (k) => k === 'inf' ? '<b class="inf">∞</b>' : `${ring(+k / 60, '<b>' + k + '</b>', 'sm')}`); updSleepTime(); }
   function updSleepTime() { const s = ui.sleep; if (!s) return; $('sleepTime').textContent = s.left === Infinity ? '∞' : `${Math.floor(s.left / 60)}:${String(Math.floor(s.left % 60)).padStart(2, '0')}`; }
   function exitSleep() { const s = ui.sleep; if (!s) return; ui.sleep = null; document.body.classList.remove('sleep', 'sleepDeep'); $('sleepUI').classList.add('hidden'); H.renderer.toneMappingExposure = s.exp; H.U.uGlowStr.value = s.glow; $('sleepDim').style.opacity = ''; H.audio.setVolume(1); H.audio.setTrack(S().bgm || 'deep'); H.setPaused(false); H.cam.tDist = H.homeD(); renderBanner(); }
   function sleepTick(dt) {
@@ -355,30 +373,30 @@ export function initR5(H) {
   function pubSoon() { if (S().isPublic && !H.DEMO) H.net.publish(snapshot()); }
   async function setPublic(on) {
     const s = S(); s.isPublic = !!on; save(true);
-    try { if (on) await H.net.publishNow(snapshot()); else await H.net.unpublish(); H.toast('', t(on ? 'pubOn' : 'pubOff')); } catch (e) { console.warn('[public]', e.code || e.message); H.toast('', t('netErr')); }
+    try { if (on) await H.net.publishNow(snapshot()); else await H.net.unpublish(); T('', t(on ? 'pubOn' : 'pubOff'), on ? PIC.ok('globe') : PIC.ic('lock')); } catch (e) { console.warn('[public]', e.code || e.message); T('', t('netErr'), PIC.ic('cloudOff')); }
     renderVisit();
   }
   async function renderVisit() {
     const s = S(); myCode(); myNick();
     $('myCode').textContent = s.code; $('nickInput').value = s.nick; $('pubToggle').classList.toggle('on', !!s.isPublic); $('pubToggle').setAttribute('aria-checked', s.isPublic ? 'true' : 'false');
-    $('pubState').textContent = t(s.isPublic ? 'pubStateOn' : 'pubStateOff');
-    const fl = $('friendList'); const fr = sv('friends', []); fl.innerHTML = fr.length ? '' : `<p class="note">${t('noFriends')}</p>`;
+    $('pubState').innerHTML = ic(s.isPublic ? 'globe' : 'lock', 'big'); $('pubState').classList.toggle('on', !!s.isPublic); $('pubState').setAttribute('aria-label', t(s.isPublic ? 'pubStateOn' : 'pubStateOff'));
+    const fl = $('friendList'); const fr = sv('friends', []); fl.innerHTML = fr.length ? '' : `<div class="emptyIc" aria-label="${t('noFriends')}">${ic('user', 'big')}${ic('user', 'big')}</div>`;
     fr.forEach((f, k) => { const r = document.createElement('div'); r.className = 'frow'; r.innerHTML = `<div class="avatar sm">${esc((f.n || '?')[0].toUpperCase())}</div><div class="ftxt"><b>${esc(f.n || '?')}</b><span>${esc(f.c)}</span></div>`;
-      const v = document.createElement('button'); v.className = 'cta small'; v.innerHTML = `<span>${t('visit')}</span>`; v.onclick = () => visitCode(f.c);
+      const v = document.createElement('button'); v.className = 'cta small iconOnly'; v.setAttribute('aria-label', t('visit')); v.innerHTML = ic('visit', 'big'); v.onclick = () => visitCode(f.c);
       const x = document.createElement('button'); x.className = 'mini close'; x.setAttribute('aria-label', t('remove')); x.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg>'; x.onclick = () => { fr.splice(k, 1); save(); renderVisit(); };
       r.append(v, x); fl.appendChild(r); });
-    if (s.isPublic && H.net.myUid()) { const n = await H.net.heartCount(H.net.myUid()); $('myHearts').textContent = n === null ? '' : '♥ ' + n; } else $('myHearts').textContent = '';
+    if (s.isPublic && H.net.myUid()) { const n = await H.net.heartCount(H.net.myUid()); $('myHearts').innerHTML = n === null ? '' : H.icFill('heart', '', '#ff9ab0') + '<b>' + n + '</b>'; } else $('myHearts').textContent = '';
   }
   async function addFriend(code) {
-    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12); if (code.length < 6) { H.toast('', t('codeBad')); return; }
-    if (code === myCode()) { H.toast('', t('codeSelf')); return; }
-    const fr = sv('friends', []); if (fr.some((f) => f.c === code)) { H.toast('', t('friendAlready')); return; }
-    let r = null; try { r = await H.net.findByCode(code); } catch (e) { H.toast('', t('netErr')); return; }
-    if (!r) { H.toast('', t('codeNotFound')); return; }
-    if (fr.length >= 50) fr.shift(); fr.push({ c: code, n: String(r.data.nick || '').slice(0, 24) }); save(); H.toast(t('friendAdded'), r.data.nick || code); renderVisit();
+    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12); if (code.length < 6) { T('', t('codeBad'), PIC.no('key')); return; }
+    if (code === myCode()) { T('', t('codeSelf'), PIC.no('user')); return; }
+    const fr = sv('friends', []); if (fr.some((f) => f.c === code)) { T('', t('friendAlready'), PIC.ok('user')); return; }
+    let r = null; try { r = await H.net.findByCode(code); } catch (e) { T('', t('netErr'), PIC.ic('cloudOff')); return; }
+    if (!r) { T('', t('codeNotFound'), PIC.no('key')); return; }
+    if (fr.length >= 50) fr.shift(); fr.push({ c: code, n: String(r.data.nick || '').slice(0, 24) }); save(); T(t('friendAdded'), r.data.nick || code, PIC.ok('userPlus') + `<b class="tname">${esc(r.data.nick || code)}</b>`); renderVisit();
   }
-  async function visitCode(code) { let r = null; try { r = await H.net.findByCode(code); } catch (e) { H.toast('', t('netErr')); return; } if (!r) { H.toast('', t('codeNotFound')); return; } startVisit(r); }
-  async function visitRandom() { let r = null; try { r = await H.net.randomPublic([]); } catch (e) { H.toast('', t('netErr')); return; } if (!r) { H.toast('', t('noPublic')); return; } startVisit(r); }
+  async function visitCode(code) { let r = null; try { r = await H.net.findByCode(code); } catch (e) { T('', t('netErr'), PIC.ic('cloudOff')); return; } if (!r) { T('', t('codeNotFound'), PIC.no('key')); return; } startVisit(r); }
+  async function visitRandom() { let r = null; try { r = await H.net.randomPublic([]); } catch (e) { T('', t('netErr'), PIC.ic('cloudOff')); return; } if (!r) { T('', t('noPublic'), PIC.no('visit')); return; } startVisit(r); }
   function startVisit(r) {
     if (ui.visit) endVisit(); H.closeSheets(); H.stopFollow();
     const d = r.data, groups = {}, root = new THREE.Group(), obst0 = H.E.obstacles.length, lights0 = H.lightDefs.slice();
@@ -391,7 +409,7 @@ export function initR5(H) {
     for (const [k, v] of Object.entries(d.tint || {})) { const j = k.lastIndexOf('_'), g = groups[k.slice(0, j)], i = +k.slice(j + 1); if (g && g.tint && i < g.n) g.tint[i] = clamp(+v || 0, 0, 3); }
     H.scene.add(root); H.assignLights(); applyLight(LIGHTS[d.light] ? d.light : 'moon');
     ui.visit = { uid: r.uid, nick: String(d.nick || '').slice(0, 24), code: d.code, root, groups, obst0, lights0 };
-    H.setWorld(groups); document.body.classList.add('visiting'); $('visitBar').classList.remove('hidden'); $('visitNick').textContent = t('visiting').replace('{n}', ui.visit.nick);
+    H.setWorld(groups); document.body.classList.add('visiting'); $('visitBar').classList.remove('hidden'); $('visitNick').textContent = ui.visit.nick; $('visitBar').setAttribute('aria-label', t('visiting').replace('{n}', ui.visit.nick));
     H.cam.home = true; H.cam.tDist = H.homeD(); renderBanner(); updHeart();
     stats().visits = (stats().visits || 0) + 1; q('visit1'); save();
   }
@@ -403,10 +421,10 @@ export function initR5(H) {
     applyLight(S().light || 'moon'); H.setWorld(H.groups); document.body.classList.remove('visiting'); $('visitBar').classList.add('hidden'); H.cam.home = true; H.cam.tDist = H.homeD(); evTimer = 0; renderBanner();
   }
   $('visitHome').onclick = () => { endVisit(); H.audio.tap(); };
-  $('visitHeart').onclick = async () => { const v = ui.visit; if (!v) return; const r = await H.net.sendHeart(v.uid); if (r === 'ok') { H.audio.heart(); H.toast('♥', t('heartSent').replace('{n}', v.nick)); stats().hearts = (stats().hearts || 0) + 1; q('heart1'); save(); updHeart(); const fl = $('visitHeart'); fl.classList.remove('pop'); void fl.offsetWidth; fl.classList.add('pop'); } else H.toast('', t(r === 'already' ? 'heartAlready' : r === 'self' ? 'codeSelf' : 'netErr')); };
+  $('visitHeart').onclick = async () => { const v = ui.visit; if (!v) return; const r = await H.net.sendHeart(v.uid); if (r === 'ok') { H.audio.heart(); T('♥', t('heartSent').replace('{n}', v.nick), `<span class="tbadge heartB">${H.icFill('heart', 'big', '#ff9ab0')}</span><b class="tname">${esc(v.nick)}</b>`); stats().hearts = (stats().hearts || 0) + 1; q('heart1'); save(); updHeart(); const fl = $('visitHeart'); fl.classList.remove('pop'); void fl.offsetWidth; fl.classList.add('pop'); } else T('', t(r === 'already' ? 'heartAlready' : r === 'self' ? 'codeSelf' : 'netErr'), r === 'already' ? `<span class="tbadge">${H.icFill('heart', 'big', '#ff9ab0')}<span class="tok">${ic('clock')}</span></span>` : r === 'self' ? PIC.no('user') : PIC.ic('cloudOff')); };
   $('pubToggle').onclick = () => setPublic(!S().isPublic);
-  $('nickSave').onclick = () => { const v = $('nickInput').value.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 24); if (!v) return; S().nick = v; save(); pubSoon(); H.toast('', t('saved')); };
-  $('copyCode').onclick = async () => { const c = myCode(), url = location.origin + location.pathname + '?friend=' + c; try { if (navigator.share) await navigator.share({ title: 'BLUE HAVEN', text: t('codeShare').replace('{c}', c), url }); else { await navigator.clipboard.writeText(url); H.toast('', t('linkCopied')); } } catch (e) { try { await navigator.clipboard.writeText(url); H.toast('', t('linkCopied')); } catch (_) {} } };
+  $('nickSave').onclick = () => { const v = $('nickInput').value.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 24); if (!v) return; S().nick = v; save(); pubSoon(); T('', t('saved'), PIC.ic('check')); };
+  $('copyCode').onclick = async () => { const c = myCode(), url = location.origin + location.pathname + '?friend=' + c; try { if (navigator.share) await navigator.share({ title: 'BLUE HAVEN', text: t('codeShare').replace('{c}', c), url }); else { await navigator.clipboard.writeText(url); T('', t('linkCopied'), PIC.ok('copy')); } } catch (e) { try { await navigator.clipboard.writeText(url); T('', t('linkCopied'), PIC.ok('copy')); } catch (_) {} } };
   $('addFriendBtn').onclick = () => addFriend($('friendInput').value);
   $('randomVisit').onclick = visitRandom;
 
@@ -461,7 +479,7 @@ export function initR5(H) {
     onGame(id, score, earned) { if (['bubble', 'run', 'memory', 'escape'].includes(id)) q('arcade2'); q('play', 1, id); q('pearls60', earned); renderQuestDot(); },
     renderShopSets, renderShopExtra, renderSettingsExtra, renderBanner,
     shopFull(id) { return (S().counts[id] || 0) + (sv('babies', []).some((b) => b.s === id) ? 1 : 0); },
-    refresh() { renderBanner(); renderQuestDot(); if (ui.care) renderCare(); if (ui.visit) $('visitNick').textContent = t('visiting').replace('{n}', ui.visit.nick); if (ui.sleep) renderSleep(); if (ui.photo) renderFilters();
+    refresh() { renderBanner(); renderQuestDot(); if (ui.care) renderCare(); if (ui.visit) $('visitNick').textContent = ui.visit.nick; $('visitBar').setAttribute('aria-label', t('visiting').replace('{n}', ui.visit.nick)); if (ui.sleep) renderSleep(); if (ui.photo) renderFilters();
       for (const [id, fn] of [['dexPanel', renderDex], ['questPanel', renderQuests], ['eventPanel', renderEvents], ['visitPanel', renderVisit]]) if (!$(id).classList.contains('hidden')) fn(); },
     // test & screenshot helpers (local only via window.__bh)
     test: { showBehaviour, forceBaby, enterPhoto, exitPhoto, shoot, enterSleep, exitSleep, startVisit, endVisit, visitRandom, visitCode, addFriend, setPublic, snapshot, liveEvents, upcoming, watchEvent, quests, q, dexOf, dexUnlocks, feedCare, petTick, callBonded, renderDex, renderQuests, renderEvents, renderVisit, showIdleTest: (n, hrs) => { ui.idle = { n, hrs }; showIdle(); }, ui, setLight, setBgm, buySet, placeSet, babyIdx, claimIdle },

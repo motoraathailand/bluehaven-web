@@ -6,16 +6,18 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { U, rng, sandHeight } from './common.js?v=r5';
-import * as E from './env.js?v=r5';
-import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r5';
-import { initR5 } from './r5.js?v=r5';
-import { S5 } from './strings5.js?v=r5';
-import { SeaAudio } from './audio.js?v=r5';
-import { LANGS, detectLang, setLang, getLang, t, addStrings } from './i18n.js?v=r5';
-import { S4 } from './strings4.js?v=r5';
-import { Arcade, ARCADE, RATE } from './arcade.js?v=r5';
-import * as net from './net.js?v=r5';
+import { U, rng, sandHeight } from './common.js?v=r6';
+import * as E from './env.js?v=r6';
+import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r6';
+import { initR5 } from './r5.js?v=r6';
+import { S5 } from './strings5.js?v=r6';
+import { SeaAudio } from './audio.js?v=r6';
+import { LANGS, detectLang, setLang, getLang, t, addStrings } from './i18n.js?v=r6';
+import { S4 } from './strings4.js?v=r6';
+import { Arcade, ARCADE, RATE } from './arcade.js?v=r6';
+import * as net from './net.js?v=r6';
+import { P, ic, icFill, PEARL, pearlN, ring, bar, gesture, hydrate } from './icons.js?v=r6';
+hydrate();
 addStrings(S4); addStrings(S5);
 var R5 = null; // r5 features (initialised near the end)
 
@@ -209,13 +211,12 @@ const $ = (id) => document.getElementById(id);
 const PEARL_DOT = '<span class="pearlDot"></span>';
 function setPearls(bump) { $('pearlCount').textContent = save.pearls; document.querySelectorAll('.pearlMirror').forEach(e => e.textContent = save.pearls); if (bump) { const p = $('pearlPill'); p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); } }
 function refreshTexts() {
-  $('langCode').textContent = getLang().toUpperCase();
-  $('muteLabel').textContent = t(audio.muted ? 'unmute' : 'mute'); $('muteBtn').setAttribute('aria-label', t(audio.muted ? 'unmute' : 'mute'));
-  $('icSound').innerHTML = audio.muted ? '<path d="M4 10v4h4l5 4V6L8 10z"/><path d="M17 9l5 6M22 9l-5 6"/>' : '<path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>';
-  const h = isTouch ? t('hintTouch') : t('hintKeys'); $('hint').textContent = h; $('startHint').textContent = h;
+  $('muteBtn').setAttribute('aria-label', t(audio.muted ? 'unmute' : 'mute'));
+  $('icSound').innerHTML = ic(audio.muted ? 'mute' : 'sound');
+  $('hint').setAttribute('aria-label', isTouch ? t('hintTouch') : t('hintKeys'));
   const menu = $('langMenu'); menu.innerHTML = '';
   for (const L of LANGS) { const b = document.createElement('button'); b.textContent = L.label; b.className = L.code === getLang() ? 'on' : ''; b.onclick = () => { chooseLang(L.code); menu.classList.add('hidden'); }; menu.appendChild(b); }
-  if (cam.follow) $('followName').textContent = followLabel(cam.follow.g, cam.follow.i);
+  if (cam.follow) setFollowChip(cam.follow.g, cam.follow.i);
   renderShop(); setPearls(false); if (typeof renderHub === 'function') { renderHub(); setAuthUI(authState, authMsg); }
   if (R5) R5.refresh();
 }
@@ -248,11 +249,11 @@ const ART = {
 
 let shopTab = 'life';
 function itemState(kind, id) {
-  if (kind === 'decor') { const owned = !!save.decor[id]; return { owned, cost: DECOR[id].cost, done: owned, label: owned ? t('owned') : t('place') }; }
+  if (kind === 'decor') { const owned = !!save.decor[id]; return { owned, cost: DECOR[id].cost, done: owned, label: owned ? t('owned') : t('place'), icon: owned ? 'check' : 'plus' }; }
   const sp = SPECIES[id], n = save.counts[id] || 0;
-  if (n === 0) return { owned: false, cost: sp.cost, done: false, label: t('unlock'), count: 0 };
-  if ((R5 ? R5.shopFull(id) : n) >= sp.max) return { owned: true, cost: 0, done: true, label: t('full'), count: n };
-  return { owned: true, cost: sp.addCost, done: false, label: t('addMore') + ' +' + Math.min(sp.step, sp.max - n), count: n };
+  if (n === 0) return { owned: false, cost: sp.cost, done: false, label: t('unlock'), count: 0, icon: 'unlock' };
+  if ((R5 ? R5.shopFull(id) : n) >= sp.max) return { owned: true, cost: 0, done: true, label: t('full'), count: n, icon: 'check' };
+  const add = Math.min(sp.step, sp.max - n); return { owned: true, cost: sp.addCost, done: false, label: t('addMore') + ' +' + add, count: n, icon: 'plus', add };
 }
 function renderShop() {
   const grid = $('shopGrid'); grid.innerHTML = ''; $('shopExtra').classList.toggle('hidden', shopTab !== 'sets');
@@ -261,11 +262,11 @@ function renderShop() {
   for (const [kind, id] of list) {
     const s = itemState(kind, id), el = document.createElement('div'); el.className = 'item' + (s.owned ? ' owned' : '');
     const name = t(kind === 'life' ? 'sp_' + id : 'dc_' + id);
-    const large = kind === 'life' && SPECIES[id].large ? `<span class="badge">${t('large')}</span>` : '';
-    const count = kind === 'life' && s.count ? `× ${s.count}` : '';
-    el.innerHTML = `${large}${ART[id]}<div class="nm">${name}</div><div class="ct">${count}</div>`;
-    const b = document.createElement('button'); b.className = 'buy' + (s.done ? ' done' : save.pearls < s.cost ? ' poor' : '');
-    b.innerHTML = s.done ? `<svg viewBox="0 0 24 24" class="ic"><path d="M5 13l4 4L19 7"/></svg><span>${s.label}</span>` : `<span>${s.label}</span>${s.cost ? PEARL_DOT + '<b>' + s.cost + '</b>' : ''}`;
+    const large = kind === 'life' && SPECIES[id].large ? `<span class="badge ib" aria-label="${t('large')}">${ic('big')}</span>` : '';
+    const count = kind === 'life' && s.count ? `<span class="cnt">${ic('fish')}${s.count}</span>` : '';
+    el.setAttribute('aria-label', name); el.innerHTML = `${large}${ART[id]}<div class="ct">${count}</div>`;
+    const b = document.createElement('button'); b.className = 'buy' + (s.done ? ' done' : save.pearls < s.cost ? ' poor' : ''); b.setAttribute('aria-label', name + ' · ' + s.label);
+    b.innerHTML = s.done ? ic('check') : `${ic(s.icon)}${s.add ? '<b class="addn">' + s.add + '</b>' : ''}${s.cost ? '<span class="sepd"></span>' + PEARL_DOT + '<b>' + s.cost + '</b>' : ''}`;
     if (!s.done) b.onclick = () => buy(kind, id);
     el.appendChild(b); grid.appendChild(el);
   }
@@ -273,23 +274,35 @@ function renderShop() {
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => { shopTab = b.dataset.tab; document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b)); renderShop(); audio.tap(); });
 function buy(kind, id) {
   const s = itemState(kind, id);
-  if (save.pearls < s.cost) { toast('', t('needMore')); audio.tap(); return; }
+  if (save.pearls < s.cost) { toast('', t('needMore'), 0, PIC.need()); audio.tap(); return; }
   save.pearls -= s.cost; setPearls(true);
   closeSheets(); audio.unlock();
   if (kind === 'decor') {
     save.decor[id] = 1; placeDecor(id, true); stopFollow();
     cam.home = false; cam.tTarget.copy(DECOR[id].focus); cam.tDist = DECOR[id].dist; cam.tPitch = 0.28; cam.idle = -6;
-    toast(t('dc_' + id), t('newDecor'));
+    toast(t('dc_' + id), t('newDecor'), 0, PIC.art(ART[id], ic('spark', 'gold')));
   } else {
     const sp = SPECIES[id], n = save.counts[id] || 0, add = n === 0 ? (id === 'lantern' ? sp.start : sp.step) : Math.min(sp.step, sp.max - n);
     save.counts[id] = n + add; const first = addCreatures(id, add, true);
     if (first >= 0) setTimeout(() => startFollow(groups[id], first), 400);
-    toast(t('sp_' + id), n === 0 ? t('newFriend') : t('moreFish'));
+    toast(t('sp_' + id), n === 0 ? t('newFriend') : t('moreFish'), 0, PIC.art(ART[id], '<b class="tnum">+' + add + '</b>'));
   }
   persist(); renderShop();
 }
 let toastTm = 0, pendToast = null;
-function toast(a, b, defer) { if (defer && ST.mode === 'title') { pendToast = [a, b]; return; } const el = $('toast'); el.querySelector('.t1').textContent = a; el.querySelector('.t2').textContent = b; el.classList.remove('hidden'); clearTimeout(toastTm); toastTm = setTimeout(() => el.classList.add('hidden'), SHOT ? 1e9 : 4200); }
+// toast = pictogram only (the words stay for screen readers in an invisible live region)
+const PIC = {
+  ic: (name, extra = '', cls = '') => `<span class="tbadge ${cls}">${ic(name, 'big')}</span>${extra}`,
+  art: (art, extra = '', cls = '') => `<span class="tart ${cls}">${art}</span>${extra}`,
+  need: () => `<span class="tbadge shake">${PEARL}<span class="tx">${ic('minus')}</span></span>`,
+  ok: (name) => `<span class="tbadge">${ic(name, 'big')}<span class="tok">${ic('check')}</span></span>`,
+  no: (name) => `<span class="tbadge shake">${ic(name, 'big')}<span class="tx">${ic('close')}</span></span>`,
+};
+function toast(a, b, defer, pic) { if (defer && ST.mode === 'title') { pendToast = [a, b, pic]; return; } const el = $('toast'); el.querySelector('.t1').textContent = a; el.querySelector('.t2').textContent = b; el.querySelector('.tpic').innerHTML = pic || PIC.ic('spark'); el.classList.remove('hidden'); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); clearTimeout(toastTm); toastTm = setTimeout(() => el.classList.add('hidden'), SHOT ? 1e9 : 3600); }
+// animated gesture demo in the middle of the screen (used for relaxing minigames)
+function showDemo(kind, extra = '', ms = 3200) { const d = $('mgDemo'); d.innerHTML = `<div class="demoCard">${gesture(kind)}${extra}</div>`; d.classList.remove('hidden'); clearTimeout(showDemo.tm); showDemo.tm = setTimeout(() => d.classList.add('hidden'), SHOT ? 1e9 : ms); }
+function mainHint() { $('hint').innerHTML = `<div class="hintSeq"><div class="hstep s1">${gesture('drag')}<span class="hic">${ic('again')}</span></div><div class="hstep s2">${gesture('pinch')}<span class="hic">${ic('big')}</span></div><div class="hstep s3">${gesture('tap')}<span class="hic">${ic('fish')}</span></div></div>`; }
+mainHint();
 
 function openSheet(id) { closeSheets(); $(id).classList.remove('hidden'); if (id === 'shopPanel') renderShop(); if (id === 'gamesPanel') renderHub(); if (id === 'setPanel') { renderSettings(); if (R5) R5.renderSettingsExtra(); } audio.tap(); }
 function closeSheets() { document.querySelectorAll('.sheet').forEach((el) => el.classList.add('hidden')); }
@@ -301,7 +314,8 @@ $('shopBtn').onclick = () => openSheet('shopPanel');
 
 // ---------- follow ----------
 const followLabel = (g, i) => { const nm = R5 ? R5.followName(g, i) : ''; return t('following') + ' · ' + (nm ? nm + ' (' + t('sp_' + g.id) + ')' : t('sp_' + g.id)); };
-function startFollow(g, i) { cam.follow = { g, i }; cam.fYaw = 0.9; $('followChip').classList.remove('hidden'); $('followName').textContent = followLabel(g, i); if (R5) R5.onFollow(g, i); }
+function setFollowChip(g, i) { const nm = R5 ? R5.followName(g, i) : ''; $('followName').textContent = nm; $('followArt').innerHTML = ART[g.id] || ''; $('followChip').setAttribute('aria-label', followLabel(g, i)); }
+function startFollow(g, i) { cam.follow = { g, i }; cam.fYaw = 0.9; $('followChip').classList.remove('hidden'); setFollowChip(g, i); if (R5) R5.onFollow(g, i); }
 function stopFollow() { if (!cam.follow) return; cam.follow = null; $('followChip').classList.add('hidden'); cam.tTarget.set(0, 5.5, 0); cam.tDist = homeD(); cam.home = true; if (R5) R5.onUnfollow(); }
 $('stopFollow').onclick = () => { stopFollow(); audio.tap(); };
 
@@ -427,7 +441,7 @@ function startMinigame(kind) {
   pearls.length = 0; $('mgScore').textContent = '0'; $('mgMult').textContent = '×1'; $('mgMultBox').classList.toggle('hidden', kind !== 'pearls'); $('mgLivesBox').classList.add('hidden'); $('mgHud').classList.remove('hidden'); $('dock').classList.add('hidden'); $('hint').classList.add('hidden');
   cam.home = false; cam.tTarget.set(0, kind === 'pearls' ? 6 : 5, 0); cam.tDist = kind === 'pearls' ? 17 : 20; cam.tPitch = kind === 'pearls' ? 0.05 : 0.18;
   audio.setGame(true); audio.tap();
-  toast(t(kind === 'pearls' ? 'mg1' : 'mg2'), t(kind === 'pearls' ? 'mg1d' : 'mg2d'));
+  $('toast').classList.add('hidden'); showDemo('tap', kind === 'pearls' ? `<span class="demoObj pearlsObj">${PEARL}</span>` : `<span class="demoObj">${ic('food', 'big')}</span>`);
 }
 function endMinigame() {
   if (!ST.mg || arcade.active) return; const kind = ST.mg, score = mgState.score; ST.mg = null;
@@ -466,10 +480,10 @@ function updateMinigame(dt) {
 function startPlay() {
   if (ST.mode !== 'title' || (GATE && !cloudReady)) return;
   audio.start(); audio.setMuted(audio.muted);
-  $('startScreen').classList.add('hidden'); ST.mode = 'play';
-  $('dock').classList.remove('hidden'); $('hint').classList.remove('hidden'); setTimeout(() => $('hint').classList.add('hidden'), 9000);
+  $('startScreen').classList.add('hidden'); ST.mode = 'play'; mainHint();
+  $('dock').classList.remove('hidden'); $('hint').classList.remove('hidden'); setTimeout(() => $('hint').classList.add('hidden'), SHOT && qs.has('keephint') ? 1e9 : 9600);
   cam.tDist = homeD(); cam.tPitch = 0.1; cam.home = true; document.body.classList.add('playing'); if (R5) R5.onStart();
-  if (pendToast) { const p = pendToast; pendToast = null; setTimeout(() => toast(p[0], p[1]), 700); }
+  if (pendToast) { const p = pendToast; pendToast = null; setTimeout(() => toast(p[0], p[1], 0, p[2]), 700); }
 }
 $('startBtn').onclick = startPlay;
 
@@ -565,9 +579,11 @@ function setAuthUI(state, msg = '') {
   authState = state; authMsg = msg;
   const gb = $('googleBtn'); gb.classList.toggle('hidden', state === 'in' || state === 'loading'); gb.disabled = state === 'busy';
   gb.querySelector('span').textContent = t(state === 'busy' ? 'signingIn' : 'signInGoogle');
-  const note = $('authNote'); note.classList.toggle('err', !!msg); note.textContent = msg || t(state === 'loading' ? 'loadingSea' : 'signInNeed'); note.classList.toggle('hidden', state === 'in' && !msg);
+  const note = $('authNote'); note.classList.toggle('err', !!msg); note.setAttribute('aria-label', msg || t(state === 'loading' ? 'loadingSea' : 'signInNeed'));
+  note.innerHTML = msg ? `${ic('warn', 'big')}<span>${msg.replace(/[<>&]/g, '')}</span>` : state === 'loading' || state === 'busy' ? '<span class="spin"></span>' : state === 'out' ? `<span class="lockHint">${ic('lock', 'big')}</span>` : '';
+  note.classList.toggle('hidden', state === 'in' && !msg);
   $('startBtn').classList.toggle('hidden', state !== 'in');
-  $('whoLine').classList.toggle('hidden', state !== 'in'); if (user) $('whoLine').textContent = t('signedInAs') + ' ' + (user.displayName || user.email || '');
+  $('whoLine').classList.toggle('hidden', state !== 'in'); if (user) { const nm = (user.displayName || user.email || '').replace(/[<>&]/g, ''); $('whoLine').innerHTML = `<span class="avatar xs"${user.photoURL ? ` style="background-image:url('${encodeURI(user.photoURL)}')"` : ''}>${user.photoURL ? '' : (nm[0] || '').toUpperCase()}</span><span>${nm}</span>`; }
   $('inAppBox').classList.toggle('hidden', !(net.IN_APP && state !== 'in'));
 }
 function authError(e) {
@@ -580,7 +596,7 @@ $('googleBtn').onclick = async () => {
   audio.start(); audio.setMuted(audio.muted); setAuthUI('busy');
   try { await net.signIn(); } catch (e) { setAuthUI('out', authError(e)); }
 };
-$('copyLinkBtn').onclick = async () => { try { await navigator.clipboard.writeText(location.href); toast('', t('linkCopied')); } catch (e) { prompt('', location.href); } };
+$('copyLinkBtn').onclick = async () => { try { await navigator.clipboard.writeText(location.href); toast('', t('linkCopied'), 0, PIC.ok('copy')); } catch (e) { prompt('', location.href); } };
 function cleanSave(d) {
   const o = { pearls: 30, counts: { lantern: SPECIES.lantern.start }, decor: {}, plays: 0, hs: {}, daily: {}, settings: {} };
   if (!d) return o;
@@ -612,7 +628,7 @@ if (GATE && !DEMO) net.onUser(async (u) => {
   if (r.fresh) { persist(true); if (migrated) { try { localStorage.setItem(SAVE_KEY + '.migrated', JSON.stringify(legacy)); localStorage.removeItem(SAVE_KEY); } catch (e) {} } }
   document.body.classList.remove('locked'); setAuthUI('in');
   if (R5 && !r.fresh && !r.offline) R5.afterLogin(r.data);
-  if (migrated) toast(t('welcomeBack'), t('migrated'), 1); else if (r.offline) toast('', t('offlineNote'), 1);
+  if (migrated) toast(t('welcomeBack'), t('migrated'), 1, PIC.ic('cloudOk')); else if (r.offline) toast('', t('offlineNote'), 1, PIC.ic('cloudOff'));
 }, (e) => setAuthUI('out', authError(e)));
 else { cloudReady = !GATE || DEMO; if (!GATE || DEMO) { document.body.classList.remove('locked'); setAuthUI('in'); } }
 
@@ -620,9 +636,9 @@ else { cloudReady = !GATE || DEMO; if (!GATE || DEMO) { document.body.classList.
 function renderSettings() {
   const u = user; $('acName').textContent = u ? (u.displayName || 'Player') : (DEMO ? 'Demo' : '—'); $('acMail').textContent = u ? (u.email || '') : '';
   const av = $('acAvatar'); if (u && u.photoURL) { av.style.backgroundImage = `url("${u.photoURL}")`; av.textContent = ''; } else { av.style.backgroundImage = ''; av.textContent = ((u && (u.displayName || u.email)) || 'B')[0].toUpperCase(); }
-  $('acSync').textContent = navigator.onLine ? t('syncOk') : t('offlineNote');
+  $('acSync').innerHTML = ic(navigator.onLine ? 'cloudOk' : 'cloudOff', 'big'); $('acSync').setAttribute('aria-label', navigator.onLine ? t('syncOk') : t('offlineNote'));
   const L = $('setLangs'); L.innerHTML = ''; for (const l of LANGS) { const b = document.createElement('button'); b.textContent = l.label; b.className = l.code === getLang() ? 'on' : ''; b.onclick = () => chooseLang(l.code); L.appendChild(b); }
-  const S = $('setSound'); S.innerHTML = ''; for (const on of [true, false]) { const b = document.createElement('button'); b.textContent = t(on ? 'on' : 'off'); b.className = (!audio.muted) === on ? 'on' : ''; b.onclick = () => { if ((!audio.muted) !== on) toggleMute(); }; S.appendChild(b); }
+  const S = $('setSound'); S.innerHTML = ''; for (const on of [true, false]) { const b = document.createElement('button'); b.innerHTML = ic(on ? 'sound' : 'mute'); b.setAttribute('aria-label', t(on ? 'on' : 'off')); b.className = (!audio.muted) === on ? 'on' : ''; b.onclick = () => { if ((!audio.muted) !== on) toggleMute(); }; S.appendChild(b); }
 }
 $('setBtn').onclick = () => openSheet('setPanel');
 $('signOutBtn').onclick = async () => { audio.tap(); try { await net.signOut(); } catch (e) {} location.reload(); };
@@ -630,8 +646,8 @@ $('deleteBtn').onclick = () => { closeSheets(); $('delPanel').classList.remove('
 $('delNo').onclick = () => { $('delPanel').classList.add('hidden'); openSheet('setPanel'); };
 $('delYes').onclick = async () => {
   const b = $('delYes'); b.disabled = true; b.querySelector('span').textContent = t('deleting');
-  try { await net.deleteAccount(); cloudReady = false; closeSheets(); toast('', t('deleted')); setTimeout(() => location.reload(), 1800); }
-  catch (e) { console.warn('[delete]', e.code || e); b.disabled = false; b.querySelector('span').textContent = t('deleteYes'); toast('', t('deleteFail')); }
+  try { await net.deleteAccount(); cloudReady = false; closeSheets(); toast('', t('deleted'), 0, PIC.ok('trash')); setTimeout(() => location.reload(), 1800); }
+  catch (e) { console.warn('[delete]', e.code || e); b.disabled = false; b.querySelector('span').textContent = t('deleteYes'); toast('', t('deleteFail'), 0, PIC.no('trash')); }
 };
 
 // ---------- games hub (arcade + relaxing) with daily bonus & challenge ----------
@@ -652,17 +668,41 @@ function daily() {
   const k = dayKey(); if (!save.daily || save.daily.day !== k) { let h = 7; for (const c of k) h = (h * 31 + c.charCodeAt(0)) | 0; save.daily = { day: k, bonus: false, ch: ARCADE[Math.abs(h) % ARCADE.length], chDone: false }; }
   return save.daily;
 }
+// animated preview loops for each game card (SMIL, no assets)
+const HP = 'M10 2.6c-1 0-1.8.8-1.8 1.8V12l-1.4-1.3c-.8-.7-2-.6-2.6.2-.6.8-.5 1.8.2 2.5L9 18c1.2 1.6 2.8 3.4 5.6 3.4h.5c3 0 4.9-2.3 4.9-5.2v-4.6c0-.9-.7-1.6-1.6-1.6s-1.6.7-1.6 1.6v-.5c0-.9-.7-1.6-1.6-1.6s-1.6.7-1.6 1.6v-.6c0-.9-.7-1.6-1.6-1.6-.4 0-.8.1-1.1.4V4.4c0-1-.8-1.8-1.9-1.8z';
+const handG = (anim) => `<g>${anim}<g transform="scale(1.05) translate(-10 -2.6)"><path d="${HP}" fill="#fff" stroke="#0b2440" stroke-width="1.1" stroke-linejoin="round"/></g></g>`;
+const PREVIEW = {
+  bubble: `<svg viewBox="0 0 120 80" class="pv">${[30, 60, 90].map((x) => `<circle cx="${x}" cy="26" r="9" fill="none" stroke="#bff4ff" stroke-width="2" opacity=".7"/>`).join('')}
+    ${[[30, 0], [60, 0.6], [90, 1.2], [60, 1.8]].map(([x, b]) => `<circle cx="${x}" cy="0" r="6" fill="${b === 1.2 ? '#ffd98a' : '#bff4ff'}" opacity=".85"><animateTransform attributeName="transform" type="translate" values="0 86;0 26;0 26" keyTimes="0;.5;1" dur="2.4s" begin="${b}s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.9;.9;0" keyTimes="0;.15;.5;.56" dur="2.4s" begin="${b}s" repeatCount="indefinite"/></circle>`).join('')}
+    ${handG(`<animateTransform attributeName="transform" type="translate" values="30 34;30 30;60 34;60 30;90 34;90 30;60 34;60 30;30 34" keyTimes="0;.12;.25;.37;.5;.62;.75;.87;1" dur="2.4s" begin="0.6s" repeatCount="indefinite"/>`)}</svg>`,
+  run: `<svg viewBox="0 0 120 80" class="pv"><g><animateTransform attributeName="transform" type="translate" values="0 0;-60 0" dur="2s" repeatCount="indefinite"/><path d="M0 0h240v12q-15 10-30 2t-30 4-30-4-30 2-30-4-30 4-30-2-30 4V0z" fill="#0c3456"/><path d="M0 80h240v-12q-15-10-30-2t-30-4-30 4-30-2-30 4-30-4-30 2-30-4V80z" fill="#0c3456"/>${[70, 110, 130, 170, 190, 230].map((x, k) => `<circle cx="${x}" cy="${[40, 30, 50, 40, 30, 50][k]}" r="2.6" fill="#9affd0"/>`).join('')}</g>
+    <g><animateTransform attributeName="transform" type="translate" values="34 40;34 28;34 52;34 40" dur="2s" repeatCount="indefinite"/><path d="M-9 0c4-5 12-5 16 0-4 5-12 5-16 0z" fill="#bff4ff"/><path d="M-9 0l-5-4v8z" fill="#7fd8f0"/></g>
+    ${handG(`<animateTransform attributeName="transform" type="translate" values="20 60;20 48;20 72;20 60" dur="2s" repeatCount="indefinite"/>`)}</svg>`,
+  memory: `<svg viewBox="0 0 120 80" class="pv">${['#5af0ff', '#ff7ad0', '#ffd25a', '#7aff9a', '#a890ff', '#ff9a5a'].map((c, i) => { const a = -Math.PI / 2 + i / 6 * Math.PI * 2, x = 60 + Math.cos(a) * 24, y = 40 + Math.sin(a) * 24; const seq = [0, 2, 4][i % 3]; return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8" fill="${c}" opacity=".35">${[1, 3, 5].includes(i) ? '' : `<animate attributeName="opacity" values=".35;1;.35;.35" keyTimes="0;.08;.18;1" dur="3s" begin="${(seq * 0.25).toFixed(2)}s" repeatCount="indefinite"/>`}</circle>`; }).join('')}<circle cx="60" cy="40" r="7" fill="none" stroke="#bff4ff" stroke-dasharray="3 3"><animateTransform attributeName="transform" type="rotate" values="0 60 40;360 60 40" dur="6s" repeatCount="indefinite"/></circle>
+    ${handG(`<animateTransform attributeName="transform" type="translate" values="60 22;60 22;60 18;81 56;81 52;39 56;39 52;60 22" keyTimes="0;.4;.48;.6;.68;.82;.9;1" dur="3s" repeatCount="indefinite"/>`)}</svg>`,
+  escape: `<svg viewBox="0 0 120 80" class="pv"><defs><radialGradient id="pvg"><stop offset="0" stop-color="#fff3d0"/><stop offset="1" stop-color="#fff3d0" stop-opacity="0"/></radialGradient></defs>
+    <path d="M118 14c-8-4-16-3-21 3l-5-4 1 6c5 4 13 4 25-5z" fill="#0a1424" stroke="#8aa4cc"><animateTransform attributeName="transform" type="translate" values="0 0;-14 10;0 0" dur="4s" repeatCount="indefinite"/></path>
+    <circle r="12" fill="url(#pvg)"><animateMotion dur="4s" repeatCount="indefinite" path="M40 40c0-14 30-14 30 0s30 14 30 0-30-14-30 0-30 14-30 0z"/></circle>
+    ${[0.25, 0.45, 0.65, 0.85, 1.05].map((d) => `<ellipse rx="3.2" ry="1.4" fill="#d4f6ff"><animateMotion dur="4s" begin="-${(4 - d).toFixed(2)}s" repeatCount="indefinite" rotate="auto" path="M40 40c0-14 30-14 30 0s30 14 30 0-30-14-30 0-30 14-30 0z"/></ellipse>`).join('')}
+    <g><animateMotion dur="4s" repeatCount="indefinite" path="M40 48c0-14 30-14 30 0s30 14 30 0-30-14-30 0-30 14-30 0z"/><g transform="scale(1.05) translate(-10 -2.6)"><path d="${HP}" fill="#fff" stroke="#0b2440" stroke-width="1.1"/></g></g></svg>`,
+  pearls: `<svg viewBox="0 0 120 80" class="pv">${[[24, 0], [52, 0.8], [80, 0.3], [100, 1.3]].map(([x, b], k) => `<circle cx="${x}" cy="0" r="${k === 2 ? 7 : 5.5}" fill="${k === 2 ? '#ffe08a' : '#eef8ff'}"><animateTransform attributeName="transform" type="translate" values="0 90;0 -10" dur="2.6s" begin="${b}s" repeatCount="indefinite"/></circle>`).join('')}
+    ${handG(`<animateTransform attributeName="transform" type="translate" values="52 50;52 46;80 40;80 36;52 50" keyTimes="0;.2;.5;.7;1" dur="2.6s" repeatCount="indefinite"/>`)}</svg>`,
+  feed: `<svg viewBox="0 0 120 80" class="pv">${[30, 46, 62, 78].map((x, k) => `<circle cx="${x}" cy="0" r="2.2" fill="#d8f8ff"><animateTransform attributeName="transform" type="translate" values="0 10;0 60" dur="2.2s" begin="${k * 0.3}s" repeatCount="indefinite"/></circle>`).join('')}
+    <g><animateTransform attributeName="transform" type="translate" values="16 58;96 50;16 58" dur="4.4s" repeatCount="indefinite"/><path d="M-10 0c4-5 12-5 16 0-4 5-12 5-16 0z" fill="#8ab4d8"/><path d="M6 0l5-4v8z" fill="#6a94b8"/></g>
+    ${handG(`<animateTransform attributeName="transform" type="translate" values="54 14;54 10;54 14" dur="1.1s" repeatCount="indefinite"/>`)}</svg>`,
+};
+const gIcon = (id) => GICON[id] || (id === 'pearls' ? '<svg viewBox="0 0 48 48"><circle cx="16" cy="30" r="7" fill="#bff0ff"/><circle cx="31" cy="20" r="9" fill="#bff0ff"/><circle cx="34" cy="36" r="4.5" fill="#bff0ff"/></svg>' : '<svg viewBox="0 0 48 48"><path d="M8 26c7-9 19-9 26 0-7 9-19 9-26 0z" fill="#8ab4d8"/><path d="M34 26l7-6v12z" fill="#6a94b8"/><circle cx="22" cy="9" r="2" fill="#d8f8ff"/><circle cx="29" cy="13" r="1.6" fill="#d8f8ff"/></svg>');
 function renderHub() {
   if (!$('hubDaily')) return; const d = daily();
-  $('hubDaily').innerHTML = `<div class="dl${d.bonus ? ' done' : ''}">${PEARL_DOT}<span>${t(d.bonus ? 'dailyDone' : 'dailyBonus')}</span></div>` +
-    `<div class="dl${d.chDone ? ' done' : ''}"><svg viewBox="0 0 24 24" class="ic"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg><span>${t('challenge')}: <b>${t(gName(d.ch))}</b> · ${t(d.chDone ? 'challengeDone' : 'challengeX2')}</span></div>`;
+  $('hubDaily').innerHTML = `<div class="dl${d.bonus ? ' done' : ''}" aria-label="${t(d.bonus ? 'dailyDone' : 'dailyBonus')}">${ic('gift', 'big')}${pearlN(20, '+')}${d.bonus ? `<span class="okc">${ic('check')}</span>` : ''}</div>` +
+    `<div class="dl ch${d.chDone ? ' done' : ''}" aria-label="${t('challenge')}: ${t(gName(d.ch))} · ${t(d.chDone ? 'challengeDone' : 'challengeX2')}">${ic('target', 'big')}<span class="dlg">${gIcon(d.ch)}</span><b class="x2">×2</b>${d.chDone ? `<span class="okc">${ic('check')}</span>` : ''}</div>`;
   for (const [box, list] of [['hubArcade', ARCADE], ['hubRelax', ['pearls', 'feed']]]) {
     const el = $(box); el.innerHTML = '';
     for (const id of list) {
-      const c = document.createElement('div'); c.className = 'gcard'; const best = (save.hs && save.hs[id]) || 0;
-      c.innerHTML = `${iconFor(id)}<div class="gtxt"><b>${t(gName(id))}</b><p>${t(gDesc(id))}</p><div class="best">${t('best')} ${best.toLocaleString()}${d.ch === id && !d.chDone ? `<span class="tag">${t('challenge')} ×2</span>` : ''}</div></div>`;
-      const b = document.createElement('button'); b.className = 'cta small'; b.innerHTML = `<svg viewBox="0 0 24 24" class="ic"><path d="M8 5v14l11-7z"/></svg><span>${t('play')}</span>`; b.onclick = () => startGame(id);
-      c.appendChild(b); el.appendChild(c);
+      const c = document.createElement('button'); c.className = 'gcard' + (d.ch === id && !d.chDone ? ' ch' : ''); const best = (save.hs && save.hs[id]) || 0;
+      c.setAttribute('aria-label', t(gName(id)) + ' — ' + t(gDesc(id)) + ' · ' + t('best') + ' ' + best);
+      c.innerHTML = `<span class="gprev">${PREVIEW[id]}</span>${d.ch === id && !d.chDone ? `<span class="gtag">${ic('target')}<b>×2</b></span>` : ''}<span class="gfoot"><span class="gmini">${gIcon(id)}</span><span class="gbest">${ic('trophy')}<b>${best.toLocaleString()}</b></span><span class="gplay">${icFill('play')}</span></span>`;
+      c.onclick = () => startGame(id); el.appendChild(c);
     }
   }
 }
@@ -684,24 +724,25 @@ function startArcade(id) {
   audio.setGame(true); audio.tap(); arcade.start(id);
 }
 function gameOver(id, score) {
-  ST.mg = null; $('mgHud').classList.add('hidden'); $('mgMultBox').classList.add('hidden'); $('mgLivesBox').classList.add('hidden'); audio.setGame(false); audio.finish(); $('toast').classList.add('hidden');
-  const d = daily(), base = Math.max(5, Math.min(400, ARCADE.includes(id) ? Math.round(score / RATE[id]) + 5 : score + 5)); let earned = base; const bonus = [];
-  if (d.ch === id && !d.chDone) { earned += base; d.chDone = true; bonus.push(t('bonusChallenge')); }
-  if (!d.bonus) { earned += 20; d.bonus = true; bonus.push(t('bonusDaily') + ' +20'); }
+  ST.mg = null; $('mgHud').classList.add('hidden'); $('mgMultBox').classList.add('hidden'); $('mgLivesBox').classList.add('hidden'); $('mgDemo').classList.add('hidden'); audio.setGame(false); audio.finish(); $('toast').classList.add('hidden');
+  const d = daily(), base = Math.max(5, Math.min(400, ARCADE.includes(id) ? Math.round(score / RATE[id]) + 5 : score + 5)); let earned = base; const bonus = [], bonusIc = [];
+  if (d.ch === id && !d.chDone) { earned += base; d.chDone = true; bonus.push(t('bonusChallenge')); bonusIc.push(`<span class="bchip">${ic('target')}<b>×2</b></span>`); }
+  if (!d.bonus) { earned += 20; d.bonus = true; bonus.push(t('bonusDaily') + ' +20'); bonusIc.push(`<span class="bchip">${ic('gift')}<b>+20</b></span>`); }
   earned = Math.min(earned, 2400);
   save.hs = save.hs || {}; const prev = save.hs[id] || 0, nb = score > prev && score > 0; if (nb) save.hs[id] = score;
   save.pearls += earned; save.plays = (save.plays || 0) + 1; persist(); setPearls(true); document.body.classList.remove('mg'); if (R5) R5.onGame(id, score, earned);
-  $('resScore').innerHTML = `${t(gName(id))}<b>${score.toLocaleString()}</b>`;
-  $('resBest').textContent = nb ? '★ ' + t('newBest') : t('best') + ' ' + Math.max(prev, score).toLocaleString();
-  $('resBonus').textContent = bonus.join(' · ');
+  $('resGame').innerHTML = `<span class="resIc">${gIcon(id)}</span>`; $('resGame').setAttribute('aria-label', t(gName(id)));
+  $('resScore').innerHTML = `<b>${score.toLocaleString()}</b>`;
+  $('resBest').innerHTML = nb ? `<span class="newBest">${ic('crown', 'big')}</span>` : `${ic('trophy')}<b>${Math.max(prev, score).toLocaleString()}</b>`; $('resBest').setAttribute('aria-label', nb ? t('newBest') : t('best'));
+  $('resBonus').innerHTML = bonusIc.join(''); $('resBonus').setAttribute('aria-label', bonus.join(' · '));
   $('earnedN').textContent = '+' + earned; $('resultPanel').classList.remove('hidden');
 }
 
 // ---------- r5 features ----------
-R5 = initR5({ THREE, scene, camera, renderer, canvas, cam, groups, ST, audio, t, getLang, $, get save() { return save; }, persist, setPearls, toast, floater, burst, toScreen, pickCreature,
+R5 = initR5({ ic, icFill, PIC, gesture, pearlN, ring, bar, PEARL, gIcon, THREE, scene, camera, renderer, canvas, cam, groups, ST, audio, t, getLang, $, get save() { return save; }, persist, setPearls, toast, floater, burst, toScreen, pickCreature,
   startFollow, stopFollow, openSheet, closeSheets, ensureGroup, SPECIES, SPECIES_ORDER, DECOR, DECOR_ORDER, decorObj, lightDefs, hemi, moon, camLight, U, E, net, LOCAL, qs, SHOT, DEMO, ART, PEARL_DOT,
   setWorld: (w) => { world = w; }, setPaused: (p) => { paused = p; }, renderNow: () => composer.render(0.001), homeD, ray, ndc, sandHeight, assignLights: () => { poolT = 0; }, makeGroup,
-  grow: (g) => { g.scale.setScalar(0.01); growing.push({ g, t: 0 }); }, refreshFollow: () => { if (cam.follow) $('followName').textContent = followLabel(cam.follow.g, cam.follow.i); }, get user() { return user; } });
+  grow: (g) => { g.scale.setScalar(0.01); growing.push({ g, t: 0 }); }, refreshFollow: () => { if (cam.follow) setFollowChip(cam.follow.g, cam.follow.i); }, get user() { return user; } });
 if (DEMO || !GATE) R5.onLoad();
 
 // ---------- hooks for automated screenshots ----------
