@@ -209,11 +209,12 @@ export function initR5(H) {
     if (id === 'migr') { const g = H.makeGroup('jelly', 18, 9); g.col.set('#ff6ab8'); g.glowC.set('#ffd28a').multiplyScalar(1.3); g.ribbons.material.uniforms.uCol.value.set('#e05aa8'); g.ribbons.material.uniforms.uGlow.value.set('#ffd28a'); for (let k = 0; k < 18; k++) g.add(true); H.scene.add(g.mesh); return { g }; }
     if (id === 'meteor') {
       const N = 40, pos = new Float32Array(N * 6), col = new Float32Array(N * 6), geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      const m = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); m.frustumCulled = false; H.scene.add(m);
+      const m = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); m.frustumCulled = false; H.scene.add(m); const hd = new THREE.Points(geo, new THREE.PointsMaterial({ size: 1.1, map: glowDot(), alphaTest: 0.01, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); hd.frustumCulled = false; m.add(hd);
       const st = Array.from({ length: N }, () => ({ life: 0, p: new THREE.Vector3(), v: new THREE.Vector3() })); return { m, st, geo, pos, col, spawn: 0 };
     }
   }
-  function killEvent(id) { const o = evObj[id]; if (!o) return; if (o.g) { H.scene.remove(o.g.mesh); o.g.mesh.traverse((x) => { if (x.geometry) x.geometry.dispose(); }); } if (o.m) { H.scene.remove(o.m); o.geo.dispose(); } delete evObj[id]; }
+  let _dot = null; function glowDot() { if (_dot) return _dot; const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,240,200,0.8)'); gr.addColorStop(1, 'rgba(255,220,160,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); _dot = new THREE.CanvasTexture(c); return _dot; }
+  function killEvent(id) { const o = evObj[id]; if (!o) return; if (o.g) { H.scene.remove(o.g.mesh); o.g.mesh.traverse((x) => { if (x.geometry) x.geometry.dispose(); }); } if (o.m) { H.scene.remove(o.m); o.geo.dispose(); o.m.traverse((x) => { if (x.material) x.material.dispose(); }); } delete evObj[id]; }
   function eventsTick(dt, time) {
     evTimer -= dt; if (evTimer <= 0) { evTimer = 2; const live = liveEvents().map((e) => e.id);
       for (const id of EVENTS) { if (live.includes(id) && !evObj[id] && !ui.visit) { evObj[id] = makeEvent(id); onEventSeen(id); } else if ((!live.includes(id) || ui.visit) && evObj[id]) killEvent(id); }
@@ -224,8 +225,8 @@ export function initR5(H) {
       pod.song -= dt; if (pod.song <= 0) { pod.song = 14 + Math.random() * 10; if (H.audio.ctx) H.audio.whale(H.audio.ctx.currentTime, 1.6); } }
     const mg = evObj.migr; if (mg) { const g = mg.g; g.step(dt, ctxLite); for (let k = 0; k < g.n; k++) { const p = g.pos[k], w = 0.07; g.shift(k, -p.z * w * dt, 0, p.x * w * dt); } g.sync(cp); }
     const me = evObj.meteor; if (me) {
-      me.spawn -= dt; for (const s of me.st) { if (s.life > 0 || me.spawn > 0) continue; const a = Math.random() * 6.28, r = 10 + Math.random() * 26; s.p.set(Math.cos(a) * r, 30 + Math.random() * 6, Math.sin(a) * r); s.v.set((Math.random() - 0.5) * 6, -16 - Math.random() * 8, (Math.random() - 0.5) * 6); s.life = 1; me.spawn = 0.22 + Math.random() * 0.5; }
-      me.st.forEach((s, k) => { if (s.life > 0) { s.life -= dt * 0.75; s.p.addScaledVector(s.v, dt); } const a = Math.max(0, s.life), o = k * 6; me.pos.set([s.p.x, s.p.y, s.p.z, s.p.x - s.v.x * 0.22, s.p.y - s.v.y * 0.22, s.p.z - s.v.z * 0.22], o); me.col.set([1.0 * a, 0.95 * a, 0.8 * a, 0, 0, 0], o); });
+      me.spawn -= dt; for (const s of me.st) { if (s.life > 0 || me.spawn > 0) continue; const a = Math.random() * 6.28, r = 10 + Math.random() * 26; s.p.set(Math.cos(a) * r, 30 + Math.random() * 6, Math.sin(a) * r); { const d = Math.random() * 6.28, sp = 9 + Math.random() * 6; s.v.set(Math.cos(d) * sp, -10 - Math.random() * 6, Math.sin(d) * sp); } s.life = 1; me.spawn = 0.12 + Math.random() * 0.3; }
+      me.st.forEach((s, k) => { if (s.life > 0) { s.life -= dt * 0.75; s.p.addScaledVector(s.v, dt); } const a = Math.max(0, s.life), o = k * 6; me.pos.set([s.p.x, s.p.y, s.p.z, s.p.x - s.v.x * 0.45, s.p.y - s.v.y * 0.45, s.p.z - s.v.z * 0.45], o); me.col.set([1.0 * a, 0.95 * a, 0.8 * a, 0, 0, 0], o); });
       me.geo.attributes.position.needsUpdate = true; me.geo.attributes.color.needsUpdate = true;
     }
   }
@@ -394,7 +395,7 @@ export function initR5(H) {
     H.cam.home = true; H.cam.tDist = H.homeD(); renderBanner(); updHeart();
     stats().visits = (stats().visits || 0) + 1; q('visit1'); save();
   }
-  async function updHeart() { const v = ui.visit; if (!v) return; $('visitHearts').textContent = '♥'; const n = await H.net.heartCount(v.uid); if (ui.visit === v && n !== null) $('visitHearts').textContent = '♥ ' + n; }
+  async function updHeart() { const v = ui.visit; if (!v) return; $('visitHearts').textContent = '♥'; if (H.DEMO) return; const n = await H.net.heartCount(v.uid); if (ui.visit === v && n !== null) $('visitHearts').textContent = '♥ ' + n; }
   function endVisit() {
     const v = ui.visit; if (!v) return; ui.visit = null; H.stopFollow(); H.scene.remove(v.root); v.root.traverse((x) => { if (x.geometry) x.geometry.dispose(); });
     H.E.obstacles.length = v.obst0; H.lightDefs.length = 0; H.lightDefs.push(...v.lights0); H.assignLights();

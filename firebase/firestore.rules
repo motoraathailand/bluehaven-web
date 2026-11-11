@@ -1,0 +1,82 @@
+rules_version = '2';
+// BLUE HAVEN — each player owns exactly one private save doc (users/{uid}) and,
+// only if they opt in, one read-only public snapshot (public/{uid}) that others may visit and heart.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function smallMap(d, k, n) { return !(k in d) || (d[k] is map && d[k].size() <= n); }
+    function smallList(d, k, n) { return !(k in d) || (d[k] is list && d[k].size() <= n); }
+    function shortStr(d, k, n) { return !(k in d) || (d[k] is string && d[k].size() <= n); }
+    function today() { return int(math.floor(request.time.toMillis() / 86400000.0)); }
+
+    function validSave(d) {
+      return d.keys().hasOnly(['v', 'pearls', 'counts', 'decor', 'hs', 'settings', 'daily', 'plays', 'updated', 'created',
+                               'idleAt', 'dex', 'bond', 'names', 'babies', 'quests', 'theme', 'sets', 'light', 'bgm',
+                               'friends', 'isPublic', 'code', 'stats', 'nick', 'tint'])
+        && d.keys().hasAll(['v', 'pearls', 'counts', 'decor', 'updated', 'created'])
+        && d.v is int && d.v >= 1 && d.v <= 100
+        && d.pearls is int && d.pearls >= 0 && d.pearls <= 10000000
+        && d.counts is map && d.counts.size() <= 40
+        && d.decor is map && d.decor.size() <= 80
+        && smallMap(d, 'hs', 40) && smallMap(d, 'settings', 20) && smallMap(d, 'daily', 20) && smallMap(d, 'dex', 60)
+        && smallMap(d, 'bond', 300) && smallMap(d, 'names', 300) && smallMap(d, 'quests', 20) && smallMap(d, 'stats', 60) && smallMap(d, 'tint', 300)
+        && smallList(d, 'babies', 60) && smallList(d, 'sets', 20) && smallList(d, 'friends', 50)
+        && shortStr(d, 'theme', 24) && shortStr(d, 'light', 24) && shortStr(d, 'bgm', 24) && shortStr(d, 'code', 12) && shortStr(d, 'nick', 24)
+        && (!('plays' in d) || (d.plays is int && d.plays >= 0))
+        && (!('isPublic' in d) || d.isPublic is bool)
+        && d.updated == request.time;
+    }
+
+    match /users/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      // first save: may carry migrated localStorage progress (capped)
+      allow create: if isOwner(uid) && validSave(request.resource.data)
+        && request.resource.data.created == request.time
+        && request.resource.data.pearls <= 50000
+        && (!('idleAt' in request.resource.data) || request.resource.data.idleAt == request.time);
+      // later saves: creation time is fixed, the idle clock can only be reset to the server time,
+      // and pearls can't jump by more than one big reward per write
+      allow update: if isOwner(uid) && validSave(request.resource.data)
+        && request.resource.data.created == resource.data.created
+        && (request.resource.data.get('idleAt', null) == resource.data.get('idleAt', null) || request.resource.data.idleAt == request.time)
+        && request.resource.data.pearls - resource.data.pearls <= 3000;
+      allow delete: if isOwner(uid);
+    }
+
+    function validPublic(d) {
+      return d.keys().hasOnly(['nick', 'counts', 'decor', 'theme', 'light', 'code', 'updated', 'babies', 'sets', 'tint'])
+        && d.keys().hasAll(['nick', 'counts', 'decor', 'code', 'updated'])
+        && d.nick is string && d.nick.size() >= 1 && d.nick.size() <= 24
+        && d.counts is map && d.counts.size() <= 40
+        && d.decor is map && d.decor.size() <= 80
+        && d.code is string && d.code.size() >= 6 && d.code.size() <= 12
+        && shortStr(d, 'theme', 24) && shortStr(d, 'light', 24) && smallList(d, 'babies', 60) && smallList(d, 'sets', 10) && smallMap(d, 'tint', 300)
+        && d.updated == request.time;
+    }
+
+    match /public/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isOwner(uid) && validPublic(request.resource.data);
+      allow delete: if isOwner(uid);
+
+      // one heart per visitor per aquarium per UTC day; doc id = <visitorUid>_<dayNumber>
+      match /hearts/{hid} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.auth.uid != uid
+          && exists(/databases/$(database)/documents/public/$(uid))
+          && request.resource.data.keys().hasOnly(['from', 'day', 'at'])
+          && request.resource.data.from == request.auth.uid
+          && request.resource.data.day == today()
+          && request.resource.data.at == request.time
+          && hid == request.auth.uid + '_' + string(today());
+        allow update: if false;
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
