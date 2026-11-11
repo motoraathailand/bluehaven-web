@@ -1,10 +1,10 @@
 // BLUE HAVEN (deep sea) — environment: abyssal water, silt floor, rocks, bioluminescent plants & corals, vents, particles.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, fbm, noise3, sandHeight, deep, setGlow } from './common.js?v=r2';
+import { U, rng, fbm, noise3, sandHeight, deep, setGlow } from './common.js?v=r3';
 
 export const PAL = {
-  deep: new THREE.Color('#03101f'), mid: new THREE.Color('#0a2c4c'), up: new THREE.Color('#114270'), top: new THREE.Color('#1d6496'),
+  deep: new THREE.Color('#08223e'), mid: new THREE.Color('#12446e'), up: new THREE.Color('#1c6298'), top: new THREE.Color('#3088c0'),
 };
 export const obstacles = []; // {x,y,z,r}
 const C = (h) => new THREE.Color(h);
@@ -53,7 +53,7 @@ export function makeFloorSpecks(n, prRef) {
         float ps = uPR * 60.0 / max(d, 0.5); vA *= clamp(ps / 2.5, 0.0, 1.0);
         gl_PointSize = clamp(ps, 2.5, 10.0); gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `varying float vA; varying float vH; void main(){ float d = length(gl_PointCoord - 0.5); float s = smoothstep(0.5, 0.0, d);
-      vec3 c = mix(vec3(0.3, 0.95, 1.0), vec3(0.55, 0.6, 1.0), vH); gl_FragColor = vec4(c * s * vA * 1.2, 1.0); }` });
+      vec3 c = mix(vec3(0.3, 0.95, 1.0), vec3(0.55, 0.6, 1.0), vH); gl_FragColor = vec4(c * s * vA * 0.65, 1.0); }` });
   const p = new THREE.Points(g, m); p.frustumCulled = false; return p;
 }
 
@@ -159,7 +159,7 @@ const glassMat = new THREE.ShaderMaterial({
     void main(){ vec2 g = vec2(vUv.x * 28.0, vUv.y * 16.0); vec2 f = abs(fract(g + vec2(vUv.y * 4.0, 0.0)) - 0.5); vec2 f2 = abs(fract(vec2(g.x - vUv.y * 4.0, g.y)) - 0.5);
       float lat = max(smoothstep(0.42, 0.5, max(f.x, f.y)), smoothstep(0.44, 0.5, f2.x) * 0.6);
       float fr = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.0); float dist = length(vV);
-      float a = (lat * 0.45 + fr * 0.35) * (0.8 + 0.2 * sin(uTime * 0.8 + vUv.y * 6.0)) * exp(-dist * 0.03) * smoothstep(0.0, 0.08, vUv.y);
+      float a = (lat * 0.27 + fr * 0.22) * (0.8 + 0.2 * sin(uTime * 0.8 + vUv.y * 6.0)) * exp(-dist * 0.03) * smoothstep(0.0, 0.08, vUv.y);
       gl_FragColor = vec4(uCol * a, 1.0); }`,
 });
 function glassSponge(h = 2.2, rad = 0.45) {

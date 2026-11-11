@@ -2,8 +2,8 @@
 // Bodies are built in code (volumetric bodies, separate fins, eyes); motion = vertex-shader spine wave + true 3D steering.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, noise3, sandHeight, setGlow } from './common.js?v=r2';
-import { obstacles } from './env.js?v=r2';
+import { U, rng, noise3, sandHeight, setGlow } from './common.js?v=r3';
+import { obstacles } from './env.js?v=r3';
 
 const C = (h) => new THREE.Color(h);
 const tmpC = new THREE.Color();
@@ -566,10 +566,10 @@ const BELL_FS = `
     float gon = smoothstep(0.07, 0.0, abs(length(abs(vXZ) - vec2(0.11)) - 0.06)) * step(0.28, vH);
     float wave = 0.55 + 0.45 * sin(uTime * 1.6 - ang * 2.0 + vSeed * 6.0);
     vec3 c = uCol * (0.1 + fr * 0.7) + uGlow * (rim * (0.5 + 0.6 * wave) + canal * (0.5 + vC * 0.6) + gon * 0.55);
-    gl_FragColor = vec4(c * fade, 1.0);
+    gl_FragColor = vec4(c * fade * 0.68, 1.0);
   }`;
 const RIB_VS = `attribute float aT; attribute float aA; varying float vT; varying float vA; varying float vD; void main(){ vT = aT; vA = aA; vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }`;
-const RIB_FS = `uniform vec3 uCol; uniform vec3 uGlow; varying float vT; varying float vA; varying float vD; void main(){ float a = pow(1.0 - vT, 1.3) * vA * exp(-vD * 0.032); vec3 c = mix(uGlow, uCol, vT * 0.8); gl_FragColor = vec4(c * a, 1.0); }`;
+const RIB_FS = `uniform vec3 uCol; uniform vec3 uGlow; varying float vT; varying float vA; varying float vD; void main(){ float a = pow(1.0 - vT, 1.3) * vA * exp(-vD * 0.032); vec3 c = mix(uGlow, uCol, vT * 0.8); gl_FragColor = vec4(c * a * 0.7, 1.0); }`;
 export class Jellies {
   constructor(id = 'jelly') {
     this.id = id; this.sp = SPECIES[id]; this.max = this.sp.max; this.n = 0; this.pos = []; this.vel = []; this.axis = []; this.grow = []; this.phase = []; this.rate = []; this.size = []; this.wander = []; this.r = rng(1234);
@@ -686,7 +686,7 @@ export class CombJellies {
           float along = vP.y * 6.0 - uTime * 2.2 + vPh * 10.0; float beat = 0.55 + 0.45 * sin(along * 2.0);
           float fr = pow(clamp(1.0 - abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0), 2.0); float dist = length(vV); float fade = exp(-dist * 0.035);
           float far = 1.0 - 0.6 * smoothstep(8.0, 22.0, dist);
-          vec3 rainbow = hue(fract(vP.y * 1.2 - uTime * 0.25 + ang * 0.05 + vPh)) * row * beat * smoothstep(0.48, 0.2, abs(vP.y)) * 1.4 * far;
+          vec3 rainbow = hue(fract(vP.y * 1.2 - uTime * 0.25 + ang * 0.05 + vPh)) * row * beat * smoothstep(0.48, 0.2, abs(vP.y)) * 0.85 * far;
           vec3 c = vec3(0.25, 0.35, 0.6) * (0.08 + fr * 0.55) + rainbow;
           gl_FragColor = vec4(c * fade, 1.0); }` });
     this.bell = new THREE.InstancedMesh(g, m, this.max); this.bell.count = 0; this.bell.frustumCulled = false; this.mesh = this.bell;

@@ -4,7 +4,7 @@ import * as THREE from 'three';
 export const U = {
   uTime: { value: 0 },
   uRimCol: { value: new THREE.Color(0.035, 0.07, 0.16) },
-  uGlowStr: { value: 1.35 },
+  uGlowStr: { value: 0.62 },
   uLowQ: { value: 0 },
 };
 
@@ -106,6 +106,6 @@ export function deep(mat, opts = {}) {
           outgoingLight *= mix(vec3(1.0), vec3(0.72, 0.92, 1.05), 1.0 - exp(-0.6 * length(vViewPosition) * 0.045)); }
         #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'deepR2' + JSON.stringify({ s: opts.sway, w: opts.swim, r: rim, g: glow, h: !!sheen });
+  mat.customProgramCacheKey = () => 'deepR3' + JSON.stringify({ s: opts.sway, w: opts.swim, r: rim, g: glow, h: !!sheen });
   return mat;
 }

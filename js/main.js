@@ -6,11 +6,11 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { U, rng, sandHeight } from './common.js?v=r2';
-import * as E from './env.js?v=r2';
-import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r2';
-import { SeaAudio } from './audio.js?v=r2';
-import { LANGS, detectLang, setLang, getLang, t } from './i18n.js?v=r2';
+import { U, rng, sandHeight } from './common.js?v=r3';
+import * as E from './env.js?v=r3';
+import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r3';
+import { SeaAudio } from './audio.js?v=r3';
+import { LANGS, detectLang, setLang, getLang, t } from './i18n.js?v=r3';
 
 const qs = new URLSearchParams(location.search);
 const SHOT = qs.has('shot'), DEMO = qs.has('demo');
@@ -28,7 +28,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPrefer
 const maxPR = LOW ? 0.8 : QUALITY === 'mid' ? Math.min(devicePixelRatio, 1.5) : Math.min(devicePixelRatio, 2);
 let pixelRatio = HQ ? Math.min(devicePixelRatio, 1.5) : Math.min(maxPR, LOW ? 0.8 : 1.1);
 renderer.setPixelRatio(pixelRatio);
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.45;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.7;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const prRef = { value: pixelRatio };
 
@@ -39,12 +39,12 @@ const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1200);
 // ---------- environment ----------
 const backdrop = E.makeBackdrop(); scene.add(backdrop);
 scene.add(E.makeSilt(LOW ? 110 : HQ ? 220 : 160));
-const hemi = new THREE.HemisphereLight('#4a86c8', '#14222e', 1.15); scene.add(hemi);
-const moon = new THREE.DirectionalLight('#7aa4e0', 0.9); moon.position.set(-10, 60, 8); scene.add(moon);
+const hemi = new THREE.HemisphereLight('#5a96d4', '#1c3040', 1.7); scene.add(hemi);
+const moon = new THREE.DirectionalLight('#86b0e6', 1.25); moon.position.set(-10, 60, 8); scene.add(moon);
 // soft light that travels with the viewer + a gentle glowing guide orb, so the abyss stays calm and readable
 const camLight = new THREE.PointLight('#a8c0ff', 11, 30, 1.3); scene.add(camLight);
 const orb = new THREE.Group(); scene.add(orb);
-orb.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 14), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.62, 0.84, 0.98) })));
+orb.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 14), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 0.54, 0.64) })));
 const orbLight = new THREE.PointLight('#9fe8ff', 14, 16, 1.4); orb.add(orbLight);
 const orbHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(200,245,255,0.9)'); gr.addColorStop(0.35, 'rgba(120,210,255,0.25)'); gr.addColorStop(1, 'rgba(80,160,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx; })(), blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
 orbHalo.scale.setScalar(1.0); orb.add(orbHalo);
@@ -108,7 +108,7 @@ for (const id of SPECIES_ORDER) if (save.counts[id]) addCreatures(id, save.count
 // ---------- post (DREAM BOAT painterly pipeline, tuned for the abyss; no temporal grain) ----------
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.72, 0.5, 0.85); // HDR threshold: only real glows bloom
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.48, 0.35, 0.9); // HDR threshold: only real glows bloom
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const fxaa = new ShaderPass(FXAAShader);
@@ -355,7 +355,7 @@ function floater(x, y, text, gold) { const el = document.createElement('div'); e
 
 // ---------- minigame: drifting pearls ----------
 const PEARL_MAX = 26;
-const pearlMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.15, metalness: 0.2, emissive: '#bfe6ff', emissiveIntensity: 0.8 });
+const pearlMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.15, metalness: 0.2, emissive: '#bfe6ff', emissiveIntensity: 0.55 });
 const pearlMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.3, 28, 18), pearlMat, PEARL_MAX); pearlMesh.count = 0; pearlMesh.frustumCulled = false; scene.add(pearlMesh);
 const glowGeo = new THREE.BufferGeometry(); const glowPos = new Float32Array(PEARL_MAX * 3), glowA = new Float32Array(PEARL_MAX); glowGeo.setAttribute('position', new THREE.BufferAttribute(glowPos, 3)); glowGeo.setAttribute('aA', new THREE.BufferAttribute(glowA, 1));
 const pearlGlow = new THREE.Points(glowGeo, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, uniforms: { uPR: prRef },
@@ -535,7 +535,7 @@ function tick(dt) {
   tmp2.set(Math.sin(time * 0.23) * 3.2, 2.6 + Math.sin(time * 0.31) * 0.7, Math.cos(time * 0.19) * 3.2).add(cam.target);
   if (cam.follow) tmp2.add(tmp.set(Math.sin(time * 0.2) * 3.5, 2.6, Math.cos(time * 0.2) * 3.5).multiplyScalar(Math.max(1, cam.follow.g.sp.len * 0.35)));
   if (ST.mg === 'pearls') tmp2.copy(camera.position).lerp(cam.target, 0.35).add(tmp.set(0, 2.5, 0));
-  orbPos.lerp(tmp2, Math.min(1, dt * 0.8)); orb.position.copy(orbPos); orbLight.intensity = 12 + Math.sin(time * 1.7) * 2; { const od = orbPos.distanceTo(camera.position); orbHalo.material.opacity = 0.42 * THREE.MathUtils.smoothstep(od, 2.5, 7); orb.children[0].visible = od > 1.2; }
+  orbPos.lerp(tmp2, Math.min(1, dt * 0.8)); orb.position.copy(orbPos); orbLight.intensity = 12 + Math.sin(time * 1.7) * 2; { const od = orbPos.distanceTo(camera.position); orbHalo.material.opacity = 0.28 * THREE.MathUtils.smoothstep(od, 2.5, 7); orb.children[0].visible = od > 1.2; }
   snow.material.uniforms.uCam.value.copy(camera.position);
   shafts.userData.update(camera);
 }
