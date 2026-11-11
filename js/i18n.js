@@ -55,6 +55,8 @@ const S = {
   sp_angler: { th: 'ปลาตกเบ็ดตัวน้อย', en: 'Little Anglerfish', ko: '꼬마 아귀', zh: '小鮟鱇', hi: 'नन्ही एंगलरफ़िश' },
   sp_comb: { th: 'แมงกะพรุนหวีสายรุ้ง', en: 'Rainbow Comb Jelly', ko: '무지개 빗해파리', zh: '彩虹栉水母', hi: 'इंद्रधनुषी कॉम्ब जेली' },
   sp_dumbo: { th: 'ปลาหมึกดัมโบ้', en: 'Dumbo Octopus', ko: '덤보 문어', zh: '小飞象章鱼', hi: 'डंबो ऑक्टोपस' },
+  sp_eel: { th: 'ปลาไหลริบบิ้นเรืองแสง', en: 'Glowline Ribbon Eel', ko: '빛줄기 리본장어', zh: '荧光缎带鳗', hi: 'चमकती रिबन ईल' },
+  sp_manta: { th: 'กระเบนแมนต้าทะเลลึก', en: 'Deep Manta Ray', ko: '심해 만타가오리', zh: '深海蝠鲼', hi: 'गहरे समुद्र की मंटा रे' },
   sp_squid: { th: 'หมึกยักษ์ใจดี', en: 'Gentle Giant Squid', ko: '다정한 대왕오징어', zh: '温柔的大王乌贼', hi: 'शांत विशाल स्क्विड' },
   dc_coral: { th: 'สวนปะการังเรืองแสง', en: 'Bioluminescent Coral Garden', ko: '발광 산호 정원', zh: '发光珊瑚花园', hi: 'चमकता मूंगा बगीचा' },
   dc_vent: { th: 'ปล่องน้ำพุร้อน', en: 'Hydrothermal Vent', ko: '열수 분출구', zh: '深海热泉', hi: 'हाइड्रोथर्मल वेंट' },

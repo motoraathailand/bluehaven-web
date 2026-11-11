@@ -1,7 +1,7 @@
 // BLUE HAVEN (deep sea) — environment: abyssal water, silt floor, rocks, bioluminescent plants & corals, vents, particles.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, fbm, noise3, sandHeight, deep, setGlow } from './common.js?v=deep2';
+import { U, rng, fbm, noise3, sandHeight, deep, setGlow } from './common.js?v=r1';
 
 export const PAL = {
   deep: new THREE.Color('#010208'), mid: new THREE.Color('#040b1e'), up: new THREE.Color('#071735'), top: new THREE.Color('#0d2550'),
@@ -40,7 +40,7 @@ export function makeSilt(seg) {
   return new THREE.Mesh(g, deep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }), { rim: 0.15 }));
 }
 
-// twinkling bioluminescent specks on the seafloor
+// softly breathing bioluminescent specks on the seafloor
 export function makeFloorSpecks(n, prRef) {
   const r = rng(61), P = new Float32Array(n * 3), A = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) { const a = r() * 6.28, d = Math.sqrt(r()) * 34, x = Math.cos(a) * d, z = Math.sin(a) * d; P.set([x, sandHeight(x, z) + 0.08, z], i * 3); A.set([r(), r()], i * 2); }
@@ -48,9 +48,10 @@ export function makeFloorSpecks(n, prRef) {
   const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, uniforms: { uTime: U.uTime, uPR: prRef },
     vertexShader: `uniform float uTime, uPR; attribute vec2 aS; varying float vA; varying float vH;
       void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); float d = -mv.z;
-        float tw = 0.5 + 0.5 * sin(uTime * (0.6 + aS.x * 1.5) + aS.y * 40.0);
-        vA = tw * tw * exp(-d * 0.045); vH = aS.x;
-        gl_PointSize = clamp(uPR * 60.0 / max(d, 0.5), 1.0, 10.0); gl_Position = projectionMatrix * mv; }`,
+        float tw = 0.72 + 0.28 * sin(uTime * (0.12 + aS.x * 0.18) + aS.y * 40.0);
+        vA = tw * exp(-d * 0.045) * 0.8; vH = aS.x;
+        float ps = uPR * 60.0 / max(d, 0.5); vA *= clamp(ps / 2.5, 0.0, 1.0);
+        gl_PointSize = clamp(ps, 2.5, 10.0); gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `varying float vA; varying float vH; void main(){ float d = length(gl_PointCoord - 0.5); float s = smoothstep(0.5, 0.0, d);
       vec3 c = mix(vec3(0.3, 0.95, 1.0), vec3(0.55, 0.6, 1.0), vH); gl_FragColor = vec4(c * s * vA * 1.2, 1.0); }` });
   const p = new THREE.Points(g, m); p.frustumCulled = false; return p;
@@ -309,9 +310,11 @@ export function makeSnow(n, prRef) {
         vec3 p = mod(position + drift - uCam + 20.0, 40.0) - 20.0 + uCam;
         vec4 mv = viewMatrix * vec4(p, 1.0); float d = -mv.z; float near = 1.0 - smoothstep(1.0, 5.0, d);
         vG = aS.z;
-        float tw = aS.z > 0.5 ? pow(0.5 + 0.5 * sin(uTime * (0.8 + aS.y) + aS.y * 50.0), 3.0) : 1.0;
-        gl_PointSize = clamp(aS.x * uPR * (80.0 / max(d, 0.5)) * (1.0 + near * 1.2) * (aS.z > 0.5 ? 1.4 : 1.0), 1.0, 26.0);
-        vA = (0.18 + 0.4 * aS.y) * smoothstep(0.3, 1.5, d) * (1.0 - smoothstep(10.0, 20.0, d)) * (1.0 - near * 0.85) * tw * (aS.z > 0.5 ? 2.2 : 1.0);
+        float tw = aS.z > 0.5 ? 0.75 + 0.25 * sin(uTime * 0.25 + aS.y * 50.0) : 1.0;
+        float ps = aS.x * uPR * (80.0 / max(d, 0.5)) * (1.0 + near * 1.2) * (aS.z > 0.5 ? 1.3 : 1.0);
+        vA = (0.16 + 0.34 * aS.y) * smoothstep(0.3, 1.5, d) * (1.0 - smoothstep(10.0, 20.0, d)) * (1.0 - near * 0.85) * tw * (aS.z > 0.5 ? 1.5 : 1.0);
+        vA *= clamp(ps / 2.5, 0.0, 1.0);
+        gl_PointSize = clamp(ps, 2.5, 26.0);
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `varying float vA; varying float vG;
@@ -339,4 +342,103 @@ export function makeBubbles(n, origin, prRef, height = 22, spread = 0.35, rate =
         gl_FragColor = vec4(uCol * a, 1.0); }`,
   });
   const pts = new THREE.Points(g, m); pts.position.copy(origin); pts.frustumCulled = false; return pts;
+}
+
+// ---------------- volumetric light shafts from the far surface (fade with depth) ----------------
+export function makeLightShafts(n = 7) {
+  const grp = new THREE.Group(), r = rng(808), list = [];
+  const mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide,
+    uniforms: { uTime: U.uTime, uCol: { value: C('#5f92d8') }, uStr: { value: 0.11 } },
+    vertexShader: `varying vec2 vUv; varying float vD; varying float vSeed; uniform float uTime;
+      void main(){ vUv = uv; vec3 p = position; vSeed = fract(modelMatrix[3].x * 0.137 + modelMatrix[3].z * 0.071);
+        p.x += sin(uTime * 0.11 + vSeed * 20.0 + uv.y * 2.0) * 0.6 * (1.0 - uv.y);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform float uTime; uniform vec3 uCol; uniform float uStr; varying vec2 vUv; varying float vD; varying float vSeed;
+      float h(float x){ return fract(sin(x * 91.7) * 43758.5); }
+      float n1(float x){ float i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(h(i), h(i + 1.0), f); }
+      void main(){
+        float edge = pow(sin(3.14159 * vUv.x), 2.0);
+        float streak = 0.55 + 0.45 * n1(vUv.x * 6.0 + vSeed * 30.0 + uTime * 0.04);
+        float depth = pow(vUv.y, 1.6);                    // strongest high up, fades into the abyss
+        float nearF = smoothstep(2.0, 9.0, vD) * (1.0 - smoothstep(45.0, 80.0, vD));
+        float breathe = 0.85 + 0.15 * sin(uTime * 0.15 + vSeed * 12.0);
+        gl_FragColor = vec4(uCol * uStr * edge * streak * depth * nearF * breathe, 1.0);
+      }` });
+  for (let i = 0; i < n; i++) {
+    const w = 2.5 + r() * 4, h = 34;
+    const g = new THREE.PlaneGeometry(w, h, 1, 8); g.translate(0, h / 2, 0);
+    const m = new THREE.Mesh(g, mat); const a = r() * 6.28, d = 3 + r() * 18;
+    m.position.set(Math.cos(a) * d, -2, Math.sin(a) * d); m.userData.tilt = (r() - 0.5) * 0.35; m.renderOrder = 6; m.frustumCulled = false;
+    grp.add(m); list.push(m);
+  }
+  grp.userData.update = (cam) => { for (const m of list) { m.rotation.set(0, Math.atan2(cam.position.x - m.position.x, cam.position.z - m.position.z), m.userData.tilt, 'YXZ'); } };
+  grp.userData.mat = mat;
+  return grp;
+}
+
+// ---------------- glow kelp (tall swaying ribbons) ----------------
+export function makeKelp(hq) {
+  const r = rng(515), parts = [];
+  const blade = (H, seed) => {
+    const rr = rng(seed), NY = hq ? 28 : 16, P = [], Cc = [], G = [], I = [];
+    for (let j = 0; j <= NY; j++) { const t = j / NY, y = t * H, wdt = (0.08 + 0.22 * Math.sin(Math.min(1, t * 1.15) * Math.PI) ) * (0.8 + 0.4 * rr()), tw = t * 2.4 + seed;
+      const cx = Math.sin(t * 3 + seed) * 0.25 * t, cz = Math.cos(t * 2.3 + seed) * 0.2 * t;
+      for (const s of [-1, 1]) { P.push(cx + Math.cos(tw) * wdt * s, y, cz + Math.sin(tw) * wdt * s); const c = new THREE.Color('#123a3a').lerp(C('#2a7a6a'), t * 0.8); const tip = t > 0.86 ? 1 : 0; if (Math.abs(s) && (j % 4 === 0) && t > 0.2) c.lerp(C('#6af0d0'), 0.35); Cc.push(c.r, c.g, c.b); G.push(tip ? 0.9 : (j % 4 === 0 && t > 0.2 ? 0.35 : 0.03)); }
+    }
+    for (let j = 0; j < NY; j++) { const a = j * 2; I.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(Cc, 3)); g.setAttribute('aGlow', new THREE.Float32BufferAttribute(G, 1)); g.setIndex(I); g.computeVertexNormals(); return g;
+  };
+  const clusters = [[-19, -8], [-14, 14], [16, 15], [19, -10], [3, 20], [-6, -19], [21, 4]];
+  const grp = new THREE.Group();
+  for (const [cx, cz] of clusters) {
+    const k = hq ? 7 : 4;
+    for (let i = 0; i < k; i++) {
+      const x = cx + (r() - 0.5) * 4, z = cz + (r() - 0.5) * 4, H = 5 + r() * 5;
+      if (obstacles.some(o => Math.hypot(o.x - x, o.z - z) < o.r + 0.3)) continue;
+      const g = blade(H, r() * 100); g.translate(x, sandHeight(x, z) - 0.1, z); parts.push(g);
+    }
+  }
+  const geo = mergeGeometries(parts);
+  // sway: geometry is world-placed, so sway by local height above the seabed (approx. y + 2)
+  const mat = deep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), { sway: { amp: 1.1, height: 11 }, glow: 1.2, rim: 0.8 });
+  const m = new THREE.Mesh(geo, mat); grp.add(m); return grp;
+}
+
+// ---------------- sea grass meadows (instanced blades) ----------------
+export function makeSeaGrass(n) {
+  const r = rng(717);
+  const g = new THREE.PlaneGeometry(0.07, 1, 1, 5); g.translate(0, 0.5, 0);
+  { const p = g.attributes.position, c = new Float32Array(p.count * 3), gl = new Float32Array(p.count); for (let i = 0; i < p.count; i++) { const y = p.getY(i); p.setX(i, p.getX(i) * (1 - y * 0.85)); const col = C('#0e2a30').lerp(C('#2a6a6a'), y); c.set([col.r, col.g, col.b], i * 3); gl[i] = y > 0.85 ? 0.5 : 0.02; } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.setAttribute('aGlow', new THREE.BufferAttribute(gl, 1)); g.deleteAttribute('uv'); g.computeVertexNormals(); }
+  const mat = deep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), { sway: { amp: 0.28, height: 1.0 }, glow: 1.0, rim: 0.6 });
+  const mesh = new THREE.InstancedMesh(g, mat, n); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
+  const patches = [[-3, 9], [8, 5], [-10, 2], [4, -11], [12, -5], [-8, -8], [0, 14], [15, 9]];
+  let k = 0;
+  for (let i = 0; i < n * 3 && k < n; i++) {
+    const [cx, cz] = patches[i % patches.length]; const a = r() * 6.28, d = Math.pow(r(), 0.7) * 3.6, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+    if (obstacles.some(o => Math.hypot(o.x - x, o.z - z) < o.r + 0.2)) continue;
+    p.set(x, sandHeight(x, z) - 0.05, z); q.setFromEuler(e.set((r() - 0.5) * 0.4, r() * 6.28, (r() - 0.5) * 0.4)); const h = 0.5 + r() * 1.1; s.set(1 + r() * 0.6, h, 1);
+    m4.compose(p, q, s); mesh.setMatrixAt(k++, m4);
+  }
+  mesh.count = k; return mesh;
+}
+
+// ---------------- barrel & tube sponges ----------------
+export function makeSponges(hq) {
+  const r = rng(929), parts = [];
+  const spots = [[-6.5, 4], [9, -6], [-12, -10], [6, 12], [-2, -15], [17, 2], [-17, 9], [12, 18]];
+  for (const [x0, z0] of spots) {
+    const k = 1 + Math.floor(r() * 3);
+    for (let i = 0; i < k; i++) {
+      const x = x0 + (r() - 0.5) * 2.2, z = z0 + (r() - 0.5) * 2.2; if (obstacles.some(o => Math.hypot(o.x - x, o.z - z) < o.r + 0.4)) continue;
+      const barrel = r() < 0.5, H = barrel ? 0.8 + r() * 0.8 : 1.0 + r() * 1.4, R = barrel ? 0.35 + r() * 0.25 : 0.1 + r() * 0.08;
+      const pts = []; for (let j = 0; j <= 12; j++) { const t = j / 12; const rad = barrel ? R * (0.75 + 0.35 * Math.sin(t * 2.6)) : R * (0.9 + 0.2 * t); pts.push(new THREE.Vector2(rad, t * H)); }
+      pts.push(new THREE.Vector2(pts[12].x * 0.82, H)); pts.push(new THREE.Vector2(pts[12].x * 0.78, H * 0.55));
+      const g = new THREE.LatheGeometry(pts, hq ? 22 : 12);
+      const base = C(barrel ? (r() < 0.5 ? '#b0703a' : '#8a5a8a') : (r() < 0.5 ? '#c8a040' : '#5a7ab0')); const pp = g.attributes.position, c = new Float32Array(pp.count * 3), gl = new Float32Array(pp.count);
+      for (let j = 0; j < pp.count; j++) { const px = pp.getX(j), py = pp.getY(j), pz = pp.getZ(j); const n = noise3(px * 9, py * 9, pz * 9); const col = base.clone().multiplyScalar(0.55 + 0.6 * n); if (py > H * 0.96) col.lerp(C('#ffd8a0'), 0.25); c.set([col.r, col.g, col.b], j * 3); gl[j] = (py > H * 0.97 ? 0.25 : 0.01); pp.setX(j, px * (1 + (n - 0.5) * 0.2)); pp.setZ(j, pz * (1 + (n - 0.5) * 0.2)); }
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.setAttribute('aGlow', new THREE.BufferAttribute(gl, 1)); g.deleteAttribute('uv'); g.computeVertexNormals();
+      g.rotateX((r() - 0.5) * 0.25); g.translate(x, sandHeight(x, z) - 0.08, z); parts.push(g);
+    }
+  }
+  return new THREE.Mesh(mergeGeometries(parts), deep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }), { rim: 0.6, glow: 1.0 }));
 }

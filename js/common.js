@@ -47,7 +47,7 @@ export function deep(mat, opts = {}) {
     if (opts.sway) {
       deform = `{
         float hh = clamp(position.y / ${opts.sway.height.toFixed(3)}, 0.0, 1.0);
-        vec3 ip = vec3(0.0);
+        vec3 ip = vec3(position.x, 0.0, position.z);
         #ifdef USE_INSTANCING
           ip = instanceMatrix[3].xyz;
         #endif
@@ -90,14 +90,22 @@ export function deep(mat, opts = {}) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\nuniform float uTime; uniform float uGlowStr; uniform vec3 uRimCol; uniform vec3 uSheen; varying vec3 vCW;\n${glow ? 'varying float vGlow;' : ''}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        ${glow ? `{ float pulse = 0.72 + 0.28 * sin(uTime * 1.1 + vCW.x * 0.5 + vCW.z * 0.37 + vGlow * 5.0);
-          totalEmissiveRadiance += diffuseColor.rgb * vGlow * pulse * uGlowStr * ${glow.toFixed(3)}; }` : ''}`)
+        ${glow ? `{ float pulse = 0.8 + 0.2 * sin(uTime * 0.7 + vCW.x * 0.5 + vCW.z * 0.37 + vGlow * 5.0);
+          float farG = 1.0 - 0.65 * smoothstep(8.0, 26.0, length(vViewPosition));
+          totalEmissiveRadiance += diffuseColor.rgb * vGlow * pulse * farG * uGlowStr * ${glow.toFixed(3)}; }` : ''}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        { vec3 q = vCW * 1.7; vec3 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
+          float a = fract(sin(dot(i, vec3(127.1, 311.7, 74.7))) * 43758.5453), b = fract(sin(dot(i + vec3(1.0, 0.0, 0.0), vec3(127.1, 311.7, 74.7))) * 43758.5453);
+          float c2 = fract(sin(dot(i + vec3(0.0, 1.0, 0.0), vec3(127.1, 311.7, 74.7))) * 43758.5453), d = fract(sin(dot(i + vec3(1.0, 1.0, 0.0), vec3(127.1, 311.7, 74.7))) * 43758.5453);
+          float nn = mix(mix(a, b, f.x), mix(c2, d, f.x), f.y);
+          diffuseColor.rgb *= 0.9 + 0.2 * nn; }`)
       .replace('#include <opaque_fragment>', `
         { vec3 vd = normalize(vViewPosition);
           float fr = pow(1.0 - clamp(abs(dot(normal, vd)), 0.0, 1.0), 2.4);
-          outgoingLight += uRimCol * fr * ${rim.toFixed(3)} + uSheen * fr * (0.6 + 0.4 * sin(vCW.x * 3.0 + vCW.y * 4.0 + uTime)); }
+          outgoingLight += uRimCol * fr * ${rim.toFixed(3)} + uSheen * fr * (0.7 + 0.3 * sin(vCW.x * 3.0 + vCW.y * 4.0 + uTime * 0.5));
+          outgoingLight *= mix(vec3(1.0), vec3(0.6, 0.84, 1.0), 1.0 - exp(-length(vViewPosition) * 0.045)); }
         #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'deep' + JSON.stringify({ s: opts.sway, w: opts.swim, r: rim, g: glow, h: !!sheen });
+  mat.customProgramCacheKey = () => 'deepR1' + JSON.stringify({ s: opts.sway, w: opts.swim, r: rim, g: glow, h: !!sheen });
   return mat;
 }
