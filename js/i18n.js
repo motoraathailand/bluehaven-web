@@ -76,6 +76,7 @@ export function setLang(code, save = true) {
   document.documentElement.lang = current;
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.setAttribute('placeholder', t(el.dataset.i18nPh)); });
 }
 export function getLang() { return current; }
 export function addStrings(o) { Object.assign(S, o); }

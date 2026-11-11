@@ -6,15 +6,18 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { U, rng, sandHeight } from './common.js?v=r4';
-import * as E from './env.js?v=r4';
-import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r4';
-import { SeaAudio } from './audio.js?v=r4';
-import { LANGS, detectLang, setLang, getLang, t, addStrings } from './i18n.js?v=r4';
-import { S4 } from './strings4.js?v=r4';
-import { Arcade, ARCADE, RATE } from './arcade.js?v=r4';
-import * as net from './net.js?v=r4';
-addStrings(S4);
+import { U, rng, sandHeight } from './common.js?v=r5';
+import * as E from './env.js?v=r5';
+import { SPECIES, SPECIES_ORDER, makeGroup, LOD } from './creatures.js?v=r5';
+import { initR5 } from './r5.js?v=r5';
+import { S5 } from './strings5.js?v=r5';
+import { SeaAudio } from './audio.js?v=r5';
+import { LANGS, detectLang, setLang, getLang, t, addStrings } from './i18n.js?v=r5';
+import { S4 } from './strings4.js?v=r5';
+import { Arcade, ARCADE, RATE } from './arcade.js?v=r5';
+import * as net from './net.js?v=r5';
+addStrings(S4); addStrings(S5);
+var R5 = null; // r5 features (initialised near the end)
 
 const qs = new URLSearchParams(location.search);
 const LOCAL = net.LOCAL; // test/demo switches only work on localhost — production always requires sign-in
@@ -98,6 +101,7 @@ function ensureGroup(id) {
   const g = makeGroup(id);
   groups[id] = g; scene.add(g.mesh); return g;
 }
+let world = groups; // the creatures currently on screen (own sea, or another player's while visiting)
 function addCreatures(id, n, arrive) { const g = ensureGroup(id); let first = -1; for (let i = 0; i < n; i++) { const k = g.add(arrive); if (first < 0) first = k; } return first; }
 
 // ---------- save ----------
@@ -106,7 +110,7 @@ let save = { pearls: 30, counts: { lantern: SPECIES.lantern.start }, decor: {}, 
 const legacy = (() => { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && s.counts ? s : null; } catch (e) { return null; } })();
 if (DEMO) save = { pearls: 120, counts: { lantern: 144, hatchet: 36, angler: 3, eel: 2, jelly: 8, comb: 8, dumbo: 2, manta: 1, squid: 1, whale: 1 }, decor: { anem: 1, coral: 1, vent: 1, sponge: 1, clam: 1, arch: 1 }, plays: 3 };
 if (LOCAL && qs.has('school')) save = { pearls: 120, counts: { lantern: 150, manta: 1 }, decor: { anem: 1, coral: 1 }, plays: 3 };
-function persist(now) { if (DEMO || !cloudReady) return; net.queueSave(save, now); }
+function persist(now) { if (DEMO || !cloudReady) return; net.queueSave(save, now); if (R5) R5.onPersist(); }
 let cloudReady = false;
 for (const id of DECOR_ORDER) if (save.decor[id]) placeDecor(id, false);
 for (const id of SPECIES_ORDER) if (save.counts[id]) addCreatures(id, save.counts[id], false);
@@ -193,7 +197,7 @@ function resize() {
 addEventListener('resize', resize); resize();
 
 // ---------- camera rig ----------
-const homeD = () => { const g = groups.lantern || groups.hatchet, n = g ? g.n : 100; return THREE.MathUtils.clamp(4.5 + Math.sqrt(n) * 0.75, 8, 14) * (innerHeight > innerWidth ? 1 : 0.9); }, homeT = new THREE.Vector3();
+const homeD = () => { const g = world.lantern || world.hatchet, n = g ? g.n : 100; return THREE.MathUtils.clamp(4.5 + Math.sqrt(n) * 0.75, 8, 14) * (innerHeight > innerWidth ? 1 : 0.9); }, homeT = new THREE.Vector3();
 const cam = { home: true, yaw: 0.55, pitch: 0.1, dist: 24, tYaw: 0.55, tPitch: 0.1, tDist: 24, target: new THREE.Vector3(0, 5.5, 0), tTarget: new THREE.Vector3(0, 5.5, 0), idle: 0, follow: null, fYaw: 0.9 };
 cam.dist = cam.tDist = homeD();
 const ST = { mode: 'title', mg: null };
@@ -211,8 +215,9 @@ function refreshTexts() {
   const h = isTouch ? t('hintTouch') : t('hintKeys'); $('hint').textContent = h; $('startHint').textContent = h;
   const menu = $('langMenu'); menu.innerHTML = '';
   for (const L of LANGS) { const b = document.createElement('button'); b.textContent = L.label; b.className = L.code === getLang() ? 'on' : ''; b.onclick = () => { chooseLang(L.code); menu.classList.add('hidden'); }; menu.appendChild(b); }
-  if (cam.follow) $('followName').textContent = t('following') + ' · ' + t('sp_' + cam.follow.g.id);
+  if (cam.follow) $('followName').textContent = followLabel(cam.follow.g, cam.follow.i);
   renderShop(); setPearls(false); if (typeof renderHub === 'function') { renderHub(); setAuthUI(authState, authMsg); }
+  if (R5) R5.refresh();
 }
 setLang(qs.get('lang') || detectLang(), false);
 $('langBtn').onclick = (e) => { e.stopPropagation(); $('langMenu').classList.toggle('hidden'); };
@@ -246,11 +251,12 @@ function itemState(kind, id) {
   if (kind === 'decor') { const owned = !!save.decor[id]; return { owned, cost: DECOR[id].cost, done: owned, label: owned ? t('owned') : t('place') }; }
   const sp = SPECIES[id], n = save.counts[id] || 0;
   if (n === 0) return { owned: false, cost: sp.cost, done: false, label: t('unlock'), count: 0 };
-  if (n >= sp.max) return { owned: true, cost: 0, done: true, label: t('full'), count: n };
+  if ((R5 ? R5.shopFull(id) : n) >= sp.max) return { owned: true, cost: 0, done: true, label: t('full'), count: n };
   return { owned: true, cost: sp.addCost, done: false, label: t('addMore') + ' +' + Math.min(sp.step, sp.max - n), count: n };
 }
 function renderShop() {
-  const grid = $('shopGrid'); grid.innerHTML = '';
+  const grid = $('shopGrid'); grid.innerHTML = ''; $('shopExtra').classList.toggle('hidden', shopTab !== 'sets');
+  if (shopTab === 'sets') { if (R5) { R5.renderShopSets(grid); R5.renderShopExtra(); } return; }
   const list = shopTab === 'life' ? SPECIES_ORDER.map(id => ['life', id]) : DECOR_ORDER.map(id => ['decor', id]);
   for (const [kind, id] of list) {
     const s = itemState(kind, id), el = document.createElement('div'); el.className = 'item' + (s.owned ? ' owned' : '');
@@ -285,8 +291,8 @@ function buy(kind, id) {
 let toastTm = 0, pendToast = null;
 function toast(a, b, defer) { if (defer && ST.mode === 'title') { pendToast = [a, b]; return; } const el = $('toast'); el.querySelector('.t1').textContent = a; el.querySelector('.t2').textContent = b; el.classList.remove('hidden'); clearTimeout(toastTm); toastTm = setTimeout(() => el.classList.add('hidden'), SHOT ? 1e9 : 4200); }
 
-function openSheet(id) { closeSheets(); $(id).classList.remove('hidden'); if (id === 'shopPanel') renderShop(); if (id === 'gamesPanel') renderHub(); if (id === 'setPanel') renderSettings(); audio.tap(); }
-function closeSheets() { for (const id of ['gamesPanel', 'shopPanel', 'resultPanel', 'setPanel', 'delPanel']) $(id).classList.add('hidden'); }
+function openSheet(id) { closeSheets(); $(id).classList.remove('hidden'); if (id === 'shopPanel') renderShop(); if (id === 'gamesPanel') renderHub(); if (id === 'setPanel') { renderSettings(); if (R5) R5.renderSettingsExtra(); } audio.tap(); }
+function closeSheets() { document.querySelectorAll('.sheet').forEach((el) => el.classList.add('hidden')); }
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => { $(b.dataset.close).classList.add('hidden'); audio.tap(); });
 document.querySelectorAll('.sheet').forEach(s => s.addEventListener('pointerdown', (e) => { if (e.target === s && s.id !== 'resultPanel') s.classList.add('hidden'); }));
 $('gamesBtn').onclick = () => openSheet('gamesPanel');
@@ -294,8 +300,9 @@ $('shopBtn').onclick = () => openSheet('shopPanel');
 
 
 // ---------- follow ----------
-function startFollow(g, i) { cam.follow = { g, i }; cam.fYaw = 0.9; $('followChip').classList.remove('hidden'); $('followName').textContent = t('following') + ' · ' + t('sp_' + g.id); }
-function stopFollow() { if (!cam.follow) return; cam.follow = null; $('followChip').classList.add('hidden'); cam.tTarget.set(0, 5.5, 0); cam.tDist = homeD(); cam.home = true; }
+const followLabel = (g, i) => { const nm = R5 ? R5.followName(g, i) : ''; return t('following') + ' · ' + (nm ? nm + ' (' + t('sp_' + g.id) + ')' : t('sp_' + g.id)); };
+function startFollow(g, i) { cam.follow = { g, i }; cam.fYaw = 0.9; $('followChip').classList.remove('hidden'); $('followName').textContent = followLabel(g, i); if (R5) R5.onFollow(g, i); }
+function stopFollow() { if (!cam.follow) return; cam.follow = null; $('followChip').classList.add('hidden'); cam.tTarget.set(0, 5.5, 0); cam.tDist = homeD(); cam.home = true; if (R5) R5.onUnfollow(); }
 $('stopFollow').onclick = () => { stopFollow(); audio.tap(); };
 
 // ---------- picking ----------
@@ -303,7 +310,7 @@ const pv = new THREE.Vector3();
 function toScreen(p, out) { pv.copy(p).project(camera); out.x = (pv.x * 0.5 + 0.5) * innerWidth; out.y = (-pv.y * 0.5 + 0.5) * innerHeight; out.z = pv.z; return out; }
 function pickCreature(x, y) {
   let best = null, bd = 1e9; const sp = { x: 0, y: 0, z: 0 };
-  for (const g of Object.values(groups)) for (let i = 0; i < g.n; i++) {
+  for (const g of Object.values(world)) for (let i = 0; i < g.n; i++) {
     toScreen(g.pos[i], sp); if (sp.z > 1) continue;
     const dist = camera.position.distanceTo(g.pos[i]); const rad = Math.max(34, (g.sp.len * 0.6) / dist * innerHeight * 1.2);
     const d = Math.hypot(sp.x - x, sp.y - y); if (d < rad && d / rad < bd) { bd = d / rad; best = { g, i }; }
@@ -319,6 +326,7 @@ canvas.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId); if (!p) return; const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
   if (!p.drag && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) p.drag = true;
   if (pointers.size === 2) { const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0 > 0) cam.tDist = THREE.MathUtils.clamp(dist0 * pinch0 / d, 5, 42); cam.idle = 0; return; }
+  if (p.drag && !ST.mg && R5 && R5.onDrag(e.clientX, e.clientY, dx, dy)) return;
   if (p.drag && !ST.mg) { if (cam.follow) cam.fYaw += dx * 0.006; else cam.tYaw += dx * 0.005; cam.tPitch = THREE.MathUtils.clamp(cam.tPitch + dy * 0.003, -0.15, 0.95); cam.idle = 0; }
 });
 const endPtr = (e) => { const p = pointers.get(e.pointerId); pointers.delete(e.pointerId); if (pointers.size < 2) pinch0 = 0; if (p && !p.drag && performance.now() - p.t < 450 && e.type === 'pointerup') onTap(e.clientX, e.clientY); };
@@ -331,7 +339,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyG' && !ST.mg) openSheet('gamesPanel');
   if (e.code === 'KeyB' && !ST.mg) openSheet('shopPanel');
-  if (e.code === 'Escape') { closeSheets(); stopFollow(); }
+  if (e.code === 'Escape') { closeSheets(); stopFollow(); if (R5 && R5.photo) R5.test.exitPhoto(); if (R5 && R5.sleeping) R5.test.exitSleep(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); pointers.clear(); });
@@ -339,12 +347,13 @@ addEventListener('blur', () => { keys.clear(); pointers.clear(); });
 const tapThreat = { p: new THREE.Vector3(), r: 5.5, k: 1.3, t: 0 };
 function scareAt(x, y) {
   ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
-  const sc = groups.lantern || groups.hatchet; const d = sc ? THREE.MathUtils.clamp(ray.ray.origin.distanceTo(sc.C), 4, 30) : 12;
+  const sc = world.lantern || world.hatchet; const d = sc ? THREE.MathUtils.clamp(ray.ray.origin.distanceTo(sc.C), 4, 30) : 12;
   tapThreat.p.copy(ray.ray.at(d, tmp)); tapThreat.t = 1.4; burst(tapThreat.p, 6);
 }
 function onTap(x, y) {
   if (ST.mg === 'pearls') return tapPearl(x, y);
   if (ST.mg === 'feed') return dropFood(x, y);
+  if (R5 && R5.onTap(x, y)) return;
   const hit = pickCreature(x, y);
   if (hit) { startFollow(hit.g, hit.i); audio.tap(); } else if (cam.follow) stopFollow(); else scareAt(x, y);
 }
@@ -413,7 +422,7 @@ function onEat(f, g, i) {
 }
 
 function startMinigame(kind) {
-  closeSheets(); stopFollow();
+  closeSheets(); stopFollow(); document.body.classList.add('mg');
   ST.mg = kind; Object.assign(mgState, { time: 0, dur: kind === 'pearls' ? 40 : 35, score: 0, spawn: 0, combo: 0, food: [], bites: 0 });
   pearls.length = 0; $('mgScore').textContent = '0'; $('mgMult').textContent = '×1'; $('mgMultBox').classList.toggle('hidden', kind !== 'pearls'); $('mgLivesBox').classList.add('hidden'); $('mgHud').classList.remove('hidden'); $('dock').classList.add('hidden'); $('hint').classList.add('hidden');
   cam.home = false; cam.tTarget.set(0, kind === 'pearls' ? 6 : 5, 0); cam.tDist = kind === 'pearls' ? 17 : 20; cam.tPitch = kind === 'pearls' ? 0.05 : 0.18;
@@ -459,7 +468,7 @@ function startPlay() {
   audio.start(); audio.setMuted(audio.muted);
   $('startScreen').classList.add('hidden'); ST.mode = 'play';
   $('dock').classList.remove('hidden'); $('hint').classList.remove('hidden'); setTimeout(() => $('hint').classList.add('hidden'), 9000);
-  cam.tDist = homeD(); cam.tPitch = 0.1; cam.home = true;
+  cam.tDist = homeD(); cam.tPitch = 0.1; cam.home = true; document.body.classList.add('playing'); if (R5) R5.onStart();
   if (pendToast) { const p = pendToast; pendToast = null; setTimeout(() => toast(p[0], p[1]), 700); }
 }
 $('startBtn').onclick = startPlay;
@@ -480,10 +489,10 @@ function adapt(dt) {
 const clock = new THREE.Clock(); const camPos = new THREE.Vector3(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
 let camInit = false;
 const ctx = { food: null, onEat, avoid: null, threats: [], schoolC: null };
-let paused = false;
+let paused = false, dtAcc = 0;
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (!paused) { if (arcade.active) arcade.frame(dt); else { adapt(dt); tick(dt); composer.render(dt); } }
+  if (!paused) { if (arcade.active) arcade.frame(dt); else { dtAcc += dt; if (!R5 || R5.frameGate()) { const d = Math.min(dtAcc, 0.1); dtAcc = 0; adapt(d); tick(d); composer.render(d); } } }
   requestAnimationFrame(frame);
 }
 function tick(dt) {
@@ -493,11 +502,12 @@ function tick(dt) {
   let nt = 0; const T = ctx.threats;
   const th = (p, r, k, large) => { const o = T[nt] || (T[nt] = { p: null, r: 0, k: 0, large: false }); o.p = p; o.r = r; o.k = k; o.large = large; nt++; };
   th(camera.position, 2.8, 0.8, false);
-  for (const id of ['manta', 'squid', 'whale']) { const g = groups[id]; if (g) for (let i = 0; i < g.n; i++) th(g.pos[i], g.sp.len * 0.42 + 2.6, 1.0, true); }
+  for (const id of ['manta', 'squid', 'whale']) { const g = world[id]; if (g) for (let i = 0; i < g.n; i++) th(g.pos[i], g.sp.len * 0.42 + 2.6, 1.0, true); }
   if (tapThreat.t > 0) { tapThreat.t -= dt; th(tapThreat.p, tapThreat.r, tapThreat.k, false); }
   T.length = nt;
-  ctx.schoolC = groups.lantern ? groups.lantern.C : groups.hatchet ? groups.hatchet.C : null;
-  for (const g of Object.values(groups)) { g.step(dt, ctx); g.sync(camera); }
+  ctx.schoolC = world.lantern ? world.lantern.C : world.hatchet ? world.hatchet.C : null;
+  for (const g of Object.values(world)) { g.step(dt, ctx); g.sync(camera); }
+  if (R5) { try { R5.tick(dt, time); } catch (e) { if (!R5.err) { R5.err = 1; console.error('[r5]', e); } } }
   updateMinigame(dt);
   for (let i = growing.length - 1; i >= 0; i--) { const gr = growing[i]; gr.t += dt / 2.2; const e = 1 - Math.pow(1 - Math.min(1, gr.t), 3); gr.g.scale.setScalar(Math.max(0.01, e)); if (gr.t >= 1) growing.splice(i, 1); }
   if (clamGroup) { clamGroup.userData.hinge.rotation.x = -0.5 - Math.sin(time * 0.35) * 0.12; }
@@ -526,7 +536,7 @@ function tick(dt) {
     camPos.y = Math.max(camPos.y, sandHeight(camPos.x, camPos.z) + 0.8);
     camera.position.lerp(camPos, Math.min(1, dt * 1.8));
   } else {
-    if (cam.home && !ST.mg && ctx.schoolC) { { const sg = groups.lantern || groups.hatchet; homeT.set(0, 5.5, 0).lerp(ctx.schoolC, 0.92); if (sg && sg.V) homeT.addScaledVector(sg.V, 0.85); } cam.tTarget.copy(homeT); if (!camInit) { cam.target.copy(homeT); cam.dist = cam.tDist = homeD(); } }
+    if (cam.home && !ST.mg && ctx.schoolC) { { const sg = world.lantern || world.hatchet; homeT.set(0, 5.5, 0).lerp(ctx.schoolC, 0.92); if (sg && sg.V) homeT.addScaledVector(sg.V, 0.85); } cam.tTarget.copy(homeT); if (!camInit) { cam.target.copy(homeT); cam.dist = cam.tDist = homeD(); } }
     cam.target.lerp(cam.tTarget, Math.min(1, dt * 1.2));
     camPos.set(Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist, Math.sin(cam.pitch) * cam.dist, Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist).add(cam.target);
     camPos.y += Math.sin(time * 0.4) * 0.15;
@@ -584,6 +594,7 @@ function applySave(d) {
   save = cleanSave(d);
   for (const id of DECOR_ORDER) if (save.decor[id]) placeDecor(id, false);
   for (const id of SPECIES_ORDER) { const want = save.counts[id] || 0, have = groups[id] ? groups[id].n : 0; if (want > have) addCreatures(id, want - have, false); }
+  if (R5) R5.onLoad();
   const st = save.settings || {};
   if (st.lang && !qs.get('lang')) setLang(st.lang);
   if (typeof st.muted === 'boolean' && st.muted !== audio.muted) audio.setMuted(st.muted);
@@ -600,6 +611,7 @@ if (GATE && !DEMO) net.onUser(async (u) => {
   applySave(data); cloudReady = true;
   if (r.fresh) { persist(true); if (migrated) { try { localStorage.setItem(SAVE_KEY + '.migrated', JSON.stringify(legacy)); localStorage.removeItem(SAVE_KEY); } catch (e) {} } }
   document.body.classList.remove('locked'); setAuthUI('in');
+  if (R5 && !r.fresh && !r.offline) R5.afterLogin(r.data);
   if (migrated) toast(t('welcomeBack'), t('migrated'), 1); else if (r.offline) toast('', t('offlineNote'), 1);
 }, (e) => setAuthUI('out', authError(e)));
 else { cloudReady = !GATE || DEMO; if (!GATE || DEMO) { document.body.classList.remove('locked'); setAuthUI('in'); } }
@@ -667,7 +679,7 @@ const arcade = new Arcade($('arc'), audio, {
   end: (r) => gameOver(r.id, r.score),
 });
 function startArcade(id) {
-  closeSheets(); stopFollow(); ST.mg = 'arc'; $('mgScore').textContent = '0';
+  closeSheets(); stopFollow(); ST.mg = 'arc'; document.body.classList.add('mg'); $('mgScore').textContent = '0';
   $('mgHud').classList.remove('hidden'); $('mgMultBox').classList.remove('hidden'); $('mgLivesBox').classList.remove('hidden'); $('dock').classList.add('hidden'); $('hint').classList.add('hidden'); $('toast').classList.add('hidden');
   audio.setGame(true); audio.tap(); arcade.start(id);
 }
@@ -678,12 +690,19 @@ function gameOver(id, score) {
   if (!d.bonus) { earned += 20; d.bonus = true; bonus.push(t('bonusDaily') + ' +20'); }
   earned = Math.min(earned, 2400);
   save.hs = save.hs || {}; const prev = save.hs[id] || 0, nb = score > prev && score > 0; if (nb) save.hs[id] = score;
-  save.pearls += earned; save.plays = (save.plays || 0) + 1; persist(); setPearls(true);
+  save.pearls += earned; save.plays = (save.plays || 0) + 1; persist(); setPearls(true); document.body.classList.remove('mg'); if (R5) R5.onGame(id, score, earned);
   $('resScore').innerHTML = `${t(gName(id))}<b>${score.toLocaleString()}</b>`;
   $('resBest').textContent = nb ? '★ ' + t('newBest') : t('best') + ' ' + Math.max(prev, score).toLocaleString();
   $('resBonus').textContent = bonus.join(' · ');
   $('earnedN').textContent = '+' + earned; $('resultPanel').classList.remove('hidden');
 }
+
+// ---------- r5 features ----------
+R5 = initR5({ THREE, scene, camera, renderer, canvas, cam, groups, ST, audio, t, getLang, $, get save() { return save; }, persist, setPearls, toast, floater, burst, toScreen, pickCreature,
+  startFollow, stopFollow, openSheet, closeSheets, ensureGroup, SPECIES, SPECIES_ORDER, DECOR, DECOR_ORDER, decorObj, lightDefs, hemi, moon, camLight, U, E, net, LOCAL, qs, SHOT, DEMO, ART, PEARL_DOT,
+  setWorld: (w) => { world = w; }, setPaused: (p) => { paused = p; }, renderNow: () => composer.render(0.001), homeD, ray, ndc, sandHeight, assignLights: () => { poolT = 0; }, makeGroup,
+  grow: (g) => { g.scale.setScalar(0.01); growing.push({ g, t: 0 }); }, refreshFollow: () => { if (cam.follow) $('followName').textContent = followLabel(cam.follow.g, cam.follow.i); }, get user() { return user; } });
+if (DEMO || !GATE) R5.onLoad();
 
 // ---------- hooks for automated screenshots ----------
 window.__bh = {
@@ -705,11 +724,12 @@ window.__bh = {
     if (A.id === 'escape') { const c = s.clouds[0]; A.ptr.down = true; if (c) { A.ptr.x = c.x; A.ptr.y = c.y; } }
   }, 30); },
   hub: () => openSheet('gamesPanel'), settings: () => openSheet('setPanel'), arcade, arc: (id) => startGame(id), authUI: (st, m) => setAuthUI(st, m),
+  r5: R5.test, R5, world: () => world,
   dropAt: (x, y) => dropFood(x, y), ff: (sec) => { for (let i = 0; i < sec / 0.05; i++) tick(0.05); }, buy, groups, get save() { return save; }, cam, pearls,
 };
 
 refreshTexts(); setPearls(false);
 requestAnimationFrame(() => $('fade').classList.add('off'));
 if (SHOT) document.body.classList.add('shot');
-if (LOCAL && qs.has('auto') && !net.EMU) { ST.mode = 'play'; $('startScreen').classList.add('hidden'); $('dock').classList.remove('hidden'); }
+if (LOCAL && qs.has('auto') && !net.EMU) { ST.mode = 'play'; $('startScreen').classList.add('hidden'); $('dock').classList.remove('hidden'); document.body.classList.add('playing'); R5.onStart(); }
 frame();

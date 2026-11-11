@@ -5,8 +5,17 @@ const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 const CHORDS = [[38, 45, 52, 57, 62], [36, 43, 50, 55, 64], [41, 48, 55, 57, 64], [34, 41, 50, 53, 60]];
 const SCALE = [62, 64, 65, 69, 71, 74, 76, 77, 81, 83];
 
+// r5: several original procedural tracks (all written by this project; no samples)
+export const TRACKS = {
+  deep: { chords: CHORDS, scale: SCALE, bar: 15, gap: [3.0, 5.0], bell: 0.035, pad: 1 },
+  lullaby: { chords: [[45, 52, 57, 61, 64], [42, 49, 54, 57, 61], [38, 45, 50, 54, 57], [40, 47, 52, 56, 59]], scale: [69, 71, 73, 76, 78, 81, 83, 85], bar: 12, gap: [1.6, 0.9], bell: 0.03, pad: 0.8, box: true },
+  current: { chords: [[40, 47, 52, 55, 59], [36, 43, 48, 52, 55], [43, 50, 55, 59, 62], [38, 45, 50, 53, 57]], scale: [64, 67, 69, 71, 74, 76, 79, 81], bar: 8, gap: [0.5, 0], bell: 0.03, pad: 0.7, pulse: true, arp: true },
+  glass: { chords: [[41, 48, 55, 57, 64], [43, 50, 57, 59, 66], [38, 45, 52, 57, 62], [40, 47, 54, 59, 64]], scale: [77, 79, 81, 84, 86, 88, 91], bar: 10, gap: [0.38, 0], bell: 0.022, pad: 0.6, arp: true, high: true },
+};
 export class SeaAudio {
-  constructor() { this.ctx = null; this.muted = false; this.started = false; this.game = 0; }
+  constructor() { this.ctx = null; this.muted = false; this.started = false; this.game = 0; this.track = 'deep'; this.vol = 1; this.arpI = 0; }
+  setTrack(id) { if (!TRACKS[id] || id === this.track) return; this.track = id; this.arpI = 0; if (this.ctx) { const now = this.ctx.currentTime; this.nextNote = now + 0.4; this.nextBar = Math.min(this.nextBar, now + 1.5); } }
+  setVolume(v) { this.vol = Math.max(0, Math.min(1, v)); if (this.ctx) this.master.gain.setTargetAtTime(this.muted ? 0 : 0.75 * this.vol, this.ctx.currentTime, 0.6); }
   start() {
     if (this.started) { if (this.ctx.state !== 'running') this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
@@ -15,7 +24,7 @@ export class SeaAudio {
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600; // gentle "underwater" softening
     this.master.connect(lp).connect(comp).connect(ctx.destination);
-    this.master.gain.setTargetAtTime(this.muted ? 0 : 0.75, ctx.currentTime, 2.0);
+    this.master.gain.setTargetAtTime(this.muted ? 0 : 0.75 * this.vol, ctx.currentTime, 2.0);
     this.reverb = ctx.createConvolver(); this.reverb.buffer = this.impulse(8, 2.0);
     const rg = ctx.createGain(); rg.gain.value = 0.7; this.reverb.connect(rg).connect(this.master);
     this.delay = ctx.createDelay(2); this.delay.delayTime.value = 0.48;
@@ -34,7 +43,7 @@ export class SeaAudio {
   }
   impulse(sec, decay) { const c = this.ctx, len = Math.floor(sec * c.sampleRate), b = c.createBuffer(2, len, c.sampleRate); for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay); } return b; }
   noise(sec, brown) { const c = this.ctx, len = Math.floor(sec * c.sampleRate), b = c.createBuffer(1, len, c.sampleRate), d = b.getChannelData(0); let l = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; if (brown) { l = (l + 0.02 * w) / 1.02; d[i] = l * 3.5; } else d[i] = w; } return b; }
-  setMuted(m) { this.muted = m; if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.75, this.ctx.currentTime, 0.3); }
+  setMuted(m) { this.muted = m; if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.75 * this.vol, this.ctx.currentTime, 0.3); }
   setGame(on) { this.game = on ? 1 : 0; }
 
   pad(t, midi, dur, gain) {
@@ -57,29 +66,37 @@ export class SeaAudio {
   }
   schedule() {
     const c = this.ctx; if (!c) return; const now = c.currentTime, ahead = now + 0.6;
+    const T = TRACKS[this.track] || TRACKS.deep, SC = T.scale;
     while (this.nextBar < ahead) {
-      const ch = CHORDS[this.chord % CHORDS.length], dur = 15;
-      ch.forEach((m, i) => this.pad(this.nextBar + i * 0.25, m, dur, i === 0 ? 0.05 : 0.026));
-      this.chord++; this.nextBar += dur;
+      const ch = T.chords[this.chord % T.chords.length], dur = T.bar;
+      ch.forEach((m, i) => this.pad(this.nextBar + i * 0.25, m, dur, (i === 0 ? 0.05 : 0.026) * T.pad));
+      if (T.pulse) for (let b = 0; b < dur / 1; b++) this.soft(this.nextBar + b * 1.0, ch[0] - 12, b % 4 === 0 ? 0.05 : 0.028);
+      this.curChord = ch; this.chord++; this.nextBar += dur;
     }
     while (this.nextNote < ahead) {
-      let idx = this.lastIdx + Math.round((Math.random() - 0.5) * 4); idx = Math.max(0, Math.min(SCALE.length - 1, idx)); this.lastIdx = idx;
-      this.bell(this.nextNote, SCALE[idx], 0.035 + 0.03 * this.game);
-      if (Math.random() < 0.3) this.bell(this.nextNote + 0.18, SCALE[Math.min(SCALE.length - 1, idx + 2)], 0.035);
-      this.nextNote += (this.game ? 1.0 : 3.0) + Math.random() * (this.game ? 1.4 : 5.0);
+      if (T.arp) { const ch = this.curChord || T.chords[0], seq = [0, 2, 4, 3, 1, 3, 4, 2], k = seq[this.arpI++ % seq.length], m = ch[k] + (T.high ? 24 : 12);
+        this.bell(this.nextNote, m, T.bell * (this.arpI % 4 === 1 ? 1.3 : 1)); this.nextNote += T.gap[0] * (this.game ? 0.8 : 1); continue; }
+      let idx = this.lastIdx + Math.round((Math.random() - 0.5) * 4); idx = Math.max(0, Math.min(SC.length - 1, idx)); this.lastIdx = idx;
+      this.bell(this.nextNote, SC[idx], T.bell + 0.03 * this.game);
+      if (T.box) { this.bell(this.nextNote + 0.45, SC[Math.max(0, idx - 2)], T.bell * 0.8); this.bell(this.nextNote + 0.9, SC[Math.min(SC.length - 1, idx + 1)], T.bell * 0.7); }
+      else if (Math.random() < 0.3) this.bell(this.nextNote + 0.18, SC[Math.min(SC.length - 1, idx + 2)], 0.035);
+      this.nextNote += (this.game ? 1.0 : T.gap[0]) + Math.random() * (this.game ? 1.4 : T.gap[1]);
     }
     while (this.nextBubble < ahead) { const k = 1 + Math.floor(Math.random() * 4); for (let i = 0; i < k; i++) this.bubble(this.nextBubble + i * (0.06 + Math.random() * 0.1), 0.018 + Math.random() * 0.02); this.nextBubble += 5 + Math.random() * 9; }
     if (!this.nextWhale) this.nextWhale = now + 12;
     if (this.nextWhale < ahead) { this.whale(this.nextWhale); this.nextWhale += 28 + Math.random() * 30; }
   }
+  // soft low pulse (track 'current')
+  soft(t, midi, gain) { const c = this.ctx, o = c.createOscillator(), g = c.createGain(), lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220; o.type = 'triangle'; o.frequency.value = mtof(midi); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.04); g.gain.exponentialRampToValueAtTime(0.0005, t + 0.7); o.connect(lp).connect(g).connect(this.music); o.start(t); o.stop(t + 0.75); }
   // soft, distant whale-like call: gliding sines through a vowel-ish band filter
-  whale(t) {
+  whale(t, loud = 1) {
+    if (!this.ctx) return;
     const c = this.ctx, base = 150 + Math.random() * 80, dur = 3.5 + Math.random() * 2.5, g = c.createGain(), bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 520; bp.Q.value = 1.4;
     bp.frequency.setValueAtTime(420, t); bp.frequency.linearRampToValueAtTime(780, t + dur * 0.6); bp.frequency.linearRampToValueAtTime(380, t + dur);
     for (const [mul, gn] of [[1, 0.6], [2.01, 0.3], [3.0, 0.12]]) { const o = c.createOscillator(); o.type = 'sine'; const f = base * mul; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (1.35 + Math.random() * 0.2), t + dur * 0.55); o.frequency.exponentialRampToValueAtTime(f * 0.92, t + dur);
       const v = c.createOscillator(); v.frequency.value = 4.5; const vg = c.createGain(); vg.gain.value = f * 0.006; v.connect(vg).connect(o.frequency); v.start(t); v.stop(t + dur + 0.2);
       const og = c.createGain(); og.gain.value = gn; o.connect(og).connect(bp); o.start(t); o.stop(t + dur + 0.2); }
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05, t + dur * 0.3); g.gain.linearRampToValueAtTime(0.035, t + dur * 0.7); g.gain.linearRampToValueAtTime(0, t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05 * loud, t + dur * 0.3); g.gain.linearRampToValueAtTime(0.035 * loud, t + dur * 0.7); g.gain.linearRampToValueAtTime(0, t + dur);
     bp.connect(g); g.connect(this.reverb); const dry = c.createGain(); dry.gain.value = 0.3; g.connect(dry).connect(this.music);
   }
   // ---- events ----
@@ -95,4 +112,9 @@ export class SeaAudio {
   hit(k = 0, golden = false) { if (!this.ctx) return; const t = this.ctx.currentTime, m = SCALE[((k % SCALE.length) + SCALE.length) % SCALE.length]; this.bell(t, m, 0.09, this.sfx); this.bubble(t, 0.03, 420); if (golden) this.bell(t + 0.08, m + 12, 0.06, this.sfx); }
   hurt() { if (!this.ctx) return; const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(330, t); o.frequency.exponentialRampToValueAtTime(80, t + 0.35); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0005, t + 0.4); o.connect(g).connect(this.sfx); o.start(t); o.stop(t + 0.45); }
   padNote(i) { if (!this.ctx) return; const t = this.ctx.currentTime, m = [62, 65, 67, 69, 72, 74][i % 6]; this.bell(t, m, 0.1, this.sfx); this.tone(m - 12, 0.05, 0.5, 'triangle', t); }
+  // r5 sfx
+  heart() { if (!this.ctx) return; const t = this.ctx.currentTime; [0, 4, 7].forEach((k, i) => this.bell(t + i * 0.07, 74 + k, 0.07, this.sfx)); }
+  shutter() { if (!this.ctx) return; const c = this.ctx, t = c.currentTime, n = c.createBufferSource(); n.buffer = this.noise(0.12, false); const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2500; const g = c.createGain(); g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.1); n.connect(f).connect(g).connect(this.sfx); n.start(t); this.bell(t + 0.05, 86, 0.04, this.sfx); }
+  chime() { if (!this.ctx) return; const t = this.ctx.currentTime; [0, 3, 7, 10, 14].forEach((k, i) => this.bell(t + i * 0.12, 69 + k, 0.06, this.sfx)); }
+  song() { if (!this.ctx) return; const t = this.ctx.currentTime; this.whale(t + 0.1, 2.4); this.whale(t + 2.2, 1.8); }
 }

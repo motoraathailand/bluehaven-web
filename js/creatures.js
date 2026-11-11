@@ -2,8 +2,8 @@
 // Bodies are built in code (volumetric bodies, separate fins, eyes); motion = vertex-shader spine wave + true 3D steering.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { U, rng, noise3, sandHeight, setGlow } from './common.js?v=r4';
-import { obstacles } from './env.js?v=r4';
+import { U, rng, noise3, sandHeight, setGlow } from './common.js?v=r5';
+import { obstacles } from './env.js?v=r5';
 
 const C = (h) => new THREE.Color(h);
 const tmpC = new THREE.Color();
@@ -19,7 +19,7 @@ const merge = (parts) => fixNormals(mergeGeometries(parts.map(p => { if (!p.attr
 const SWIM_GLSL = `
 uniform float uTime; uniform vec4 uSw;
 attribute vec2 aFin; attribute vec4 aSwim; attribute vec4 aSwim2; attribute float aGlow;
-varying vec3 vOP; varying float vFlash; varying float vGlowV; varying float vSeed;
+varying vec3 vOP; varying float vFlash; varying float vGlowV; varying float vSeed; varying float vTint;
 vec3 swimD(vec3 p){
   float part = aFin.x, u = aFin.y;
   float ph = aSwim.x, amp = aSwim.y, bend = aSwim.z, pit = aSwim.w;
@@ -68,7 +68,12 @@ vec3 swimD(vec3 p){
 }`;
 const FRAG_HEAD = `
 uniform float uTime; uniform float uGlowStr; uniform vec3 uRimCol; uniform vec3 uSheen; uniform float uPaintF; uniform float uSelf;
-varying vec3 vOP; varying float vFlash; varying float vGlowV; varying float vSeed;
+varying vec3 vOP; varying float vFlash; varying float vGlowV; varying float vSeed; varying float vTint;
+// rare colour variants (r5): 1 golden · 2 aurora · 3 ghost — 0 keeps the original look untouched
+vec3 tintC(vec3 c, float k){ float l = dot(c, vec3(0.3, 0.59, 0.11));
+  if (k < 1.5) return l * vec3(2.3, 1.62, 0.62) + c * 0.18;
+  if (k < 2.5) { const mat3 R = mat3(0.07, 0.74, 0.19, 0.2, 0.06, 0.74, 0.73, 0.2, 0.07); return R * c * 1.25 + vec3(0.02, 0.05, 0.08); }
+  return vec3(l * 1.7 + 0.1) * vec3(0.9, 1.0, 1.12); }
 float hh3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 float vn3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(hh3(i), hh3(i + vec3(1,0,0)), f.x), mix(hh3(i + vec3(0,1,0)), hh3(i + vec3(1,1,0)), f.x), f.y),
@@ -89,11 +94,12 @@ export function swimMaterial(o = {}) {
         { float e = 0.008; vec3 dzv = (swimD(position + vec3(0.0, 0.0, e)) - swD0) / e; vec3 dxv = (swimD(position + vec3(e, 0.0, 0.0)) - swD0) / e;
           vec3 nn = objectNormal - vec3(dot(dxv, objectNormal), 0.0, dot(dzv, objectNormal)); objectNormal = dot(nn, nn) > 1e-12 ? normalize(nn) : vec3(0.0, 1.0, 0.0); }`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        transformed += swD0; vOP = position; vFlash = aSwim2.x; vGlowV = aGlow; vSeed = aSwim2.y;`);
+        transformed += swD0; vOP = position; vFlash = aSwim2.x; vGlowV = aGlow; vSeed = aSwim2.y; vTint = aSwim2.w;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\n${FRAG_HEAD}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        diffuseColor.rgb *= 0.9 + 0.2 * vn3(vOP * uPaintF + vSeed * 13.0);`)
+        diffuseColor.rgb *= 0.9 + 0.2 * vn3(vOP * uPaintF + vSeed * 13.0);
+        if (vTint > 0.5) diffuseColor.rgb = tintC(diffuseColor.rgb, vTint);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         float vdist = length(vViewPosition);
         float frr = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 2.2);
@@ -275,11 +281,11 @@ class LodMesh {
     }
   }
   begin() { for (const L of this.levels) L.k = 0; }
-  put(camPos, p, f, roll, sc, ph, amp, bend, pit, flash, seed, glide) {
+  put(camPos, p, f, roll, sc, ph, amp, bend, pit, flash, seed, glide, tint = 0) {
     const far = this.levels.length > 1 && camPos && p.distanceToSquared(camPos) > this.lodDist * this.lodDist * Math.max(1, sc * 2);
     const L = far ? this.levels[1] : this.levels[0];
     const k = L.k++; writeBasis(L.m.instanceMatrix.array, k * 16, p, f, roll, sc);
-    const a = L.a1.array, b = L.a2.array; a[k * 4] = ph; a[k * 4 + 1] = amp; a[k * 4 + 2] = bend; a[k * 4 + 3] = pit; b[k * 4] = flash; b[k * 4 + 1] = seed; b[k * 4 + 2] = glide; b[k * 4 + 3] = 0;
+    const a = L.a1.array, b = L.a2.array; a[k * 4] = ph; a[k * 4 + 1] = amp; a[k * 4 + 2] = bend; a[k * 4 + 3] = pit; b[k * 4] = flash; b[k * 4 + 1] = seed; b[k * 4 + 2] = glide; b[k * 4 + 3] = tint;
   }
   end() { for (const L of this.levels) { L.m.count = L.k; L.m.instanceMatrix.needsUpdate = true; L.a1.needsUpdate = true; L.a2.needsUpdate = true; } }
 }
@@ -300,8 +306,8 @@ function envForce(p, v, len, wide, yr, acc, k = 1) {
 // SCHOOL — boids with 3D modes: cruise (turn waves), bait-ball tornado, split & merge, flee/regroup
 export class School {
   constructor(id) {
-    const sp = SPECIES[id]; this.id = id; this.sp = sp; this.max = sp.max; this.n = 0; this.r = rng(id.length * 131 + 7);
-    this.pos = []; this.vel = []; this.ph = []; this.bend = []; this.pit = []; this.roll = []; this.fwd = []; this.flash = []; this.startle = []; this.seed = []; this.fired = []; this.grow = []; this.side = []; this.glide = [];
+    const sp = SPECIES[id]; this.id = id; this.sp = sp; this.max = MAXO || sp.max; this.n = 0; this.r = rng(id.length * 131 + 7 + SEEDO);
+    this.pos = []; this.vel = []; this.ph = []; this.bend = []; this.pit = []; this.roll = []; this.fwd = []; this.flash = []; this.startle = []; this.seed = []; this.fired = []; this.grow = []; this.side = []; this.glide = []; this.tint = []; this.gmax = []; this.call = null;
     this.acc = new Float32Array(this.max * 3); this.ali = new Float32Array(this.max * 3); this.coh = new Float32Array(this.max * 3); this.cnt = new Float32Array(this.max); this.floorY = new Float32Array(this.max); this.stIn = new Float32Array(this.max); this.stT = new Float32Array(this.max);
     const mat = swimMaterial({ mode: 'fish', wave: sp.wave, sheen: sp.sheen, metal: sp.metal, rough: sp.rough, paintF: 18, self: 0.32 });
     this.render = new LodMesh(fishGeometry(sp.shape, sp.paint, sp.fin, false), fishGeometry(sp.shape, sp.paint, sp.fin, true), mat, this.max, LOD.dist);
@@ -317,7 +323,7 @@ export class School {
     else if (i > 0) p.copy(this.pos[0]).add(v1.set(r() - 0.5, (r() - 0.5) * 0.6, r() - 0.5).multiplyScalar(2 + Math.sqrt(this.n) * 0.35));
     else p.copy(this.T);
     this.pos[i] = p; this.vel[i] = (arrive ? v1.set(-p.x, 0, -p.z).normalize() : v1.copy(this.dir)).clone().multiplyScalar(this.sp.speed);
-    this.fwd[i] = this.vel[i].clone().normalize(); this.ph[i] = r() * 6.28; this.bend[i] = 0; this.pit[i] = 0; this.roll[i] = 0; this.flash[i] = 0; this.startle[i] = 0; this.seed[i] = r(); this.fired[i] = true; this.grow[i] = arrive ? 0.3 : 1; this.side[i] = 1; this.glide[i] = 0;
+    this.fwd[i] = this.vel[i].clone().normalize(); this.ph[i] = r() * 6.28; this.bend[i] = 0; this.pit[i] = 0; this.roll[i] = 0; this.flash[i] = 0; this.startle[i] = 0; this.seed[i] = r(); this.fired[i] = true; this.grow[i] = arrive ? 0.3 : 1; this.tint[i] = 0; this.gmax[i] = 1; this.side[i] = 1; this.glide[i] = 0;
     this.floorY[i] = sandHeight(p.x, p.z);
     return i;
   }
@@ -370,6 +376,7 @@ export class School {
     const threats = ctx.threats || [], food = ctx.food && ctx.food.length ? ctx.food : null;
     const wave = this.wave, waveR = wave ? (time - wave.t0) * wave.c : 0; if (wave && waveR > 30) this.wave = null;
     const ballMode = this.mode === 'ball', B = this.ball, frameNo = (time * 60) | 0;
+    const callOn = this.call && (this.call.t -= dt) > 0; if (this.call && !callOn) this.call = null;
     for (let i = 0; i < n; i++) {
       const p = this.pos[i], v = this.vel[i], ax = v3.set(A[i * 3], A[i * 3 + 1], A[i * 3 + 2]);
       const sf = 0.88 + 0.24 * this.seed[i];
@@ -402,6 +409,7 @@ export class School {
         const dx = p.x - th.p.x, dy = p.y - th.p.y, dz = p.z - th.p.z, d2 = dx * dx + dy * dy + dz * dz;
         if (d2 < th.r * th.r) { const d = Math.sqrt(d2) + 1e-3, k = 1 - d / th.r; ax.x += dx / d * k * 22 * th.k; ax.y += dy / d * k * 12 * th.k; ax.z += dz / d * k * 22 * th.k; st[i] = Math.max(st[i], k * th.k); }
       }
+      if (callOn && this.call.who.has(i)) { v2.subVectors(this.call.p, p); const cd = v2.length() + 1e-3; const cs = cd > 1.2 ? spd * 1.5 : spd * 0.5; v2.multiplyScalar(cs / cd); ax.x += (v2.x - v.x) * 3.2; ax.y += (v2.y - v.y) * 2.6; ax.z += (v2.z - v.z) * 3.2; }
       if (food) { let best = null, bd = 1e9; for (const f of food) { if (f.eaten) continue; const d = f.p.distanceToSquared(p); if (d < bd) { bd = d; best = f; } } if (best && bd < 220) { ax.addScaledVector(v1.subVectors(best.p, p).normalize(), 6); spd *= 1.25; if (bd < 0.1) ctx.onEat(best, this, i); } }
       if ((i + frameNo) % 6 === 0) this.floorY[i] = sandHeight(p.x, p.z);
       envForce(p, v, sp.len, 22, sp.y, ax, 1);
@@ -421,14 +429,14 @@ export class School {
       this.bend[i] += (clamp(yawRate * 0.11, -0.35, 0.35) - this.bend[i]) * Math.min(1, dt * 7);
       this.pit[i] += (clamp(-pitchRate * 0.1, -0.25, 0.25) - this.pit[i]) * Math.min(1, dt * 6);
       this.ph[i] += dt * sp.freq * (0.35 + 0.65 * s / sp.speed) * (1 - this.glide[i] * 0.7);
-      if (this.grow[i] < 1) this.grow[i] = Math.min(1, this.grow[i] + dt * 0.3);
+      { const gm = this.gmax[i] ?? 1; if (this.grow[i] < gm) this.grow[i] = Math.min(gm, this.grow[i] + dt * 0.3); else if (this.grow[i] > gm) this.grow[i] = gm; }
     }
   }
   sync(camera) {
     const R = this.render, sp = this.sp, cp = camera ? camera.position : null; R.lodDist = LOD.dist; R.begin();
     for (let i = 0; i < this.n; i++) {
       const s = this.vel[i].length(), amp = (0.45 + 0.55 * Math.min(1.6, s / sp.speed)) * (1 - this.glide[i] * 0.75) + this.startle[i] * 0.4;
-      R.put(cp, this.pos[i], this.fwd[i], this.roll[i], sp.len * this.grow[i], this.ph[i], amp, this.bend[i], this.pit[i], this.flash[i], this.seed[i], this.glide[i]);
+      R.put(cp, this.pos[i], this.fwd[i], this.roll[i], sp.len * this.grow[i], this.ph[i], amp, this.bend[i], this.pit[i], this.flash[i], this.seed[i], this.glide[i], this.tint[i] || 0);
     }
     R.end();
   }
@@ -437,8 +445,8 @@ export class School {
 // SWIMMERS — individuals with 3D wander targets, bursts & glides, banking (angler, eel, manta, squid, whale)
 class Mover {
   constructor(id) {
-    const sp = SPECIES[id]; this.id = id; this.sp = sp; this.max = sp.max; this.n = 0; this.r = rng(id.length * 97 + 3 + id.charCodeAt(0));
-    this.pos = []; this.vel = []; this.ph = []; this.bend = []; this.pit = []; this.roll = []; this.fwd = []; this.tgt = []; this.tgtT = []; this.grow = []; this.burst = []; this.glide = []; this.glideT = []; this.seed = [];
+    const sp = SPECIES[id]; this.id = id; this.sp = sp; this.max = MAXO || sp.max; this.n = 0; this.r = rng(id.length * 97 + 3 + id.charCodeAt(0) + SEEDO);
+    this.pos = []; this.vel = []; this.ph = []; this.bend = []; this.pit = []; this.roll = []; this.fwd = []; this.tgt = []; this.tgtT = []; this.grow = []; this.burst = []; this.glide = []; this.glideT = []; this.seed = []; this.tint = []; this.gmax = []; this.call = null;
   }
   randomPoint(out, ctx) {
     const sp = this.sp, r = this.r;
@@ -455,14 +463,16 @@ class Mover {
     if (arrive) { const a = r() * 6.28; p.set(Math.cos(a) * 30, (this.sp.y[0] + this.sp.y[1]) / 2 + (this.sp.floor ? 2 : 0), Math.sin(a) * 30); } else this.randomPoint(p);
     this.pos[i] = p; this.vel[i] = new THREE.Vector3(arrive ? -p.x : r() - 0.5, 0, arrive ? -p.z : r() - 0.5).normalize().multiplyScalar(this.sp.speed || 1);
     this.fwd[i] = this.vel[i].clone().normalize(); this.ph[i] = r() * 6.28; this.bend[i] = 0; this.pit[i] = 0; this.roll[i] = 0; this.seed[i] = r();
-    this.tgt[i] = this.randomPoint(new THREE.Vector3()); this.tgtT[i] = 3 + r() * 6; this.grow[i] = arrive ? 0.2 : 1; this.burst[i] = 0; this.glide[i] = 0; this.glideT[i] = 2 + r() * 5;
+    this.tgt[i] = this.randomPoint(new THREE.Vector3()); this.tgtT[i] = 3 + r() * 6; this.grow[i] = arrive ? 0.2 : 1; this.burst[i] = 0; this.glide[i] = 0; this.glideT[i] = 2 + r() * 5; this.tint[i] = 0; this.gmax[i] = 1;
     return i;
   }
   step(dt, ctx) {
     if (!(dt > 1e-4)) return;
     const sp = this.sp, n = this.n, r = this.r;
+    const callOn = this.call && (this.call.t -= dt) > 0; if (this.call && !callOn) this.call = null;
     for (let i = 0; i < n; i++) {
       const p = this.pos[i], v = this.vel[i], ax = v3.set(0, 0, 0);
+      if (callOn && this.call.who.has(i)) { this.tgt[i].copy(this.call.p); this.tgtT[i] = 2; }
       this.tgtT[i] -= dt; if (this.tgtT[i] <= 0 || p.distanceToSquared(this.tgt[i]) < Math.max(2, sp.len * sp.len * 0.5)) { this.randomPoint(this.tgt[i], ctx); this.tgtT[i] = 5 + r() * 9; }
       if (sp.burst && r() < dt * sp.burst) this.burst[i] = 1;
       this.burst[i] = Math.max(0, this.burst[i] - dt * 0.6);
@@ -487,7 +497,7 @@ class Mover {
       this.bend[i] += (clamp(yawRate * (sp.large ? 0.5 : 0.25), -0.4, 0.4) - this.bend[i]) * Math.min(1, dt * 4);
       this.pit[i] += (clamp(-pitchRate * 0.3, -0.3, 0.3) - this.pit[i]) * Math.min(1, dt * 4);
       this.ph[i] += dt * (sp.freq || 2) * (0.4 + 0.6 * s / sp.speed) * (1 - gl * 0.8) * (1 + this.burst[i] * 0.8);
-      if (this.grow[i] < 1) this.grow[i] = Math.min(1, this.grow[i] + dt * 0.25);
+      { const gm = this.gmax[i] ?? 1; if (this.grow[i] < gm) this.grow[i] = Math.min(gm, this.grow[i] + dt * 0.25); else if (this.grow[i] > gm) this.grow[i] = gm; }
     }
   }
 }
@@ -506,7 +516,7 @@ export class Swimmers extends Mover {
     for (let i = 0; i < this.n; i++) {
       const s = this.vel[i].length(), gl = this.glide[i] * (sp.glide || 0);
       const amp = sp.mode === 'ray' ? (1 - gl * 0.7) * (0.8 + this.burst[i] * 0.4) : (0.45 + 0.55 * s / sp.speed) * (1 - gl * 0.7) + this.burst[i] * 0.4;
-      R.put(cp, this.pos[i], this.fwd[i], this.roll[i], sp.len * this.grow[i], this.ph[i], amp, this.bend[i], this.pit[i], 0, this.seed[i], gl);
+      R.put(cp, this.pos[i], this.fwd[i], this.roll[i], sp.len * this.grow[i], this.ph[i], amp, this.bend[i], this.pit[i], 0, this.seed[i], gl, this.tint[i] || 0);
     }
     R.end();
   }
@@ -572,7 +582,7 @@ const RIB_VS = `attribute float aT; attribute float aA; varying float vT; varyin
 const RIB_FS = `uniform vec3 uCol; uniform vec3 uGlow; varying float vT; varying float vA; varying float vD; void main(){ float a = pow(1.0 - vT, 1.3) * vA * exp(-vD * 0.032); vec3 c = mix(uGlow, uCol, vT * 0.8); gl_FragColor = vec4(c * a * 0.7, 1.0); }`;
 export class Jellies {
   constructor(id = 'jelly') {
-    this.id = id; this.sp = SPECIES[id]; this.max = this.sp.max; this.n = 0; this.pos = []; this.vel = []; this.axis = []; this.grow = []; this.phase = []; this.rate = []; this.size = []; this.wander = []; this.r = rng(1234);
+    this.id = id; this.sp = SPECIES[id]; this.max = MAXO || this.sp.max; this.n = 0; this.pos = []; this.vel = []; this.axis = []; this.grow = []; this.phase = []; this.rate = []; this.size = []; this.wander = []; this.r = rng(1234);
     this.col = C('#5a3ad0'); this.glowC = C('#5af0ff').multiplyScalar(1.25);
     const bell = new THREE.LatheGeometry(Array.from({ length: 16 }, (_, i) => { const t = i / 15; return new THREE.Vector2(Math.sin(t * Math.PI / 2) * 0.5 * (1 + 0.1 * t), Math.cos(t * Math.PI / 2) * 0.5 - 0.06 * t * t); }), 40);
     this.aPh = new THREE.InstancedBufferAttribute(new Float32Array(this.max * 2), 2); this.aPh.setUsage(THREE.DynamicDrawUsage); bell.setAttribute('aPh', this.aPh);
@@ -596,6 +606,8 @@ export class Jellies {
     for (let s = 0; s < this.TN + this.OA; s++) { const N = s < this.TN ? this.NN : this.NA; for (let q = 0; q < N; q++) { const o = base + (k + q) * 3; this.cur[o] = this.prev[o] = this.pos[i].x; this.cur[o + 1] = this.prev[o + 1] = this.pos[i].y - q * 0.15; this.cur[o + 2] = this.prev[o + 2] = this.pos[i].z; } k += N; }
     return i;
   }
+  // r5: move one jelly together with its tentacle nodes (used by the migration event)
+  shift(i, dx, dy, dz) { this.pos[i].x += dx; this.pos[i].y += dy; this.pos[i].z += dz; const b = i * this.nodesPer * 3, e = b + this.nodesPer * 3; for (let o = b; o < e; o += 3) { this.cur[o] += dx; this.prev[o] += dx; this.cur[o + 1] += dy; this.prev[o + 1] += dy; this.cur[o + 2] += dz; this.prev[o + 2] += dz; } }
   contraction(i) { const s = (this.phase[i] % 6.2832) / 6.2832; return s < 0.3 ? Math.sin(s / 0.3 * Math.PI * 0.5) : Math.pow(1 - (s - 0.3) / 0.7, 2); }
   step(dt, ctx) {
     if (!(dt > 1e-4)) return; const t = U.uTime.value;
@@ -707,7 +719,10 @@ export class CombJellies {
   sync() { for (let i = 0; i < this.n; i++) { const s = (0.8 + (i % 3) * 0.2) * this.grow[i]; m4.compose(this.pos[i], this.q[i], v1.set(s, s, s)); this.bell.setMatrixAt(i, m4); } this.bell.count = this.n; this.bell.instanceMatrix.needsUpdate = true; }
 }
 
-export function makeGroup(id) {
+let MAXO = 0, SEEDO = 0;
+// max/seed overrides are only used by visiting events and other aquariums
+export function makeGroup(id, max = 0, seed = 0) { MAXO = max; SEEDO = seed; try { return makeGroup0(id); } finally { MAXO = 0; SEEDO = 0; } }
+function makeGroup0(id) {
   const sp = SPECIES[id];
   if (sp.kind === 'school') return new School(id);
   if (sp.kind === 'swim') return new Swimmers(id);

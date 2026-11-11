@@ -4,7 +4,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.2.0/firebas
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut,
   deleteUser, reauthenticateWithPopup, connectAuthEmulator, signInWithCredential } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, getDoc, getDocFromCache, setDoc,
-  serverTimestamp, collection, getDocs, writeBatch } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js';
+  serverTimestamp, collection, getDocs, writeBatch, deleteDoc, query, where, orderBy, limit, getCountFromServer, getDocFromServer } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js';
 
 const CONFIG = {
   apiKey: 'AIzaSyBnnYSPMYyOyCtfArKBhuRgsLxmMNAe4_k',
@@ -47,7 +47,7 @@ export async function signIn() {
 }
 
 // ---------- save ----------
-const V = 4;
+const V = 5;
 let uid = null, existed = false, pending = null, timer = 0, writing = Promise.resolve();
 const cacheKey = () => 'bluehaven.cloud.' + uid;
 const int = (n, lo = 0, hi = 1e7) => Math.max(lo, Math.min(hi, Math.floor(Number(n) || 0)));
@@ -60,7 +60,7 @@ function pack(s) {
   return out;
 }
 // r5 fields are passed through untouched (validated by rules)
-export const EXTRA = ['dex', 'bond', 'names', 'babies', 'quests', 'theme', 'sets', 'light', 'bgm', 'friends', 'isPublic', 'code', 'stats', 'nick'];
+export const EXTRA = ['dex', 'bond', 'names', 'babies', 'quests', 'theme', 'sets', 'light', 'bgm', 'friends', 'isPublic', 'code', 'stats', 'nick', 'tint'];
 
 // returns { data, fresh, offline }
 export async function loadSave(user) {
@@ -75,6 +75,7 @@ export async function loadSave(user) {
     existed = false; return { data: null, fresh: true, offline: true };
   }
 }
+export const myUid = () => uid;
 function stash(d) { try { const c = Object.assign({}, d); delete c.updated; delete c.created; delete c.idleAt; localStorage.setItem(cacheKey(), JSON.stringify(c)); } catch (_) {} }
 export function queueSave(s, now = false) {
   if (!uid) return; pending = s; stash(pack(s)); clearTimeout(timer);
@@ -82,7 +83,7 @@ export function queueSave(s, now = false) {
 }
 export function flush(extra) {
   if (!uid || !pending) return writing; const d = pack(pending); pending = null;
-  d.updated = serverTimestamp(); if (!existed) d.created = serverTimestamp(); existed = true;
+  d.updated = serverTimestamp(); d.idleAt = serverTimestamp(); if (!existed) d.created = serverTimestamp(); existed = true;
   if (extra) Object.assign(d, extra);
   const ref = doc(db, 'users', uid);
   writing = writing.then(() => setDoc(ref, d, { merge: true })).catch((e) => { console.warn('[cloud] save failed', e.code || e.message); });
@@ -108,3 +109,42 @@ export async function deleteAccount() {
   await deleteUser(u);
 }
 export const fb = { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, writeBatch };
+
+// ---------- r5: idle rewards (server clock), public aquarium snapshots, friends & hearts ----------
+const tsMs = (t) => (t && typeof t.toMillis === 'function') ? t.toMillis() : null;
+// Stamps "now" with the server clock and returns how long (ms, server time) it has been since the previous stamp.
+export async function claimIdle(prevIdleAt) {
+  if (!uid || EMU && qs.has('noidle')) return null;
+  const before = tsMs(prevIdleAt); const ref = doc(db, 'users', uid);
+  await (writing = writing.then(() => setDoc(ref, { idleAt: serverTimestamp(), updated: serverTimestamp() }, { merge: true })));
+  const snap = await getDocFromServer(ref); const now = tsMs(snap.get('idleAt'));
+  if (before === null || now === null) return { ms: 0, first: before === null };
+  return { ms: Math.max(0, now - before), first: false };
+}
+let pubT = 0, pubPending = null, pubTimer = 0;
+export function publish(snap) { // debounced (≥ 45 s apart) full snapshot write; only called when the player opted in
+  if (!uid) return; pubPending = snap; clearTimeout(pubTimer);
+  const wait = Math.max(0, 45000 - (Date.now() - pubT)); pubTimer = setTimeout(() => { const d = Object.assign({}, pubPending, { updated: serverTimestamp() }); pubPending = null; pubT = Date.now(); setDoc(doc(db, 'public', uid), d).catch((e) => console.warn('[public]', e.code || e.message)); }, wait);
+}
+export async function publishNow(snap) { if (!uid) return; clearTimeout(pubTimer); pubPending = null; pubT = Date.now(); await setDoc(doc(db, 'public', uid), Object.assign({}, snap, { updated: serverTimestamp() })); }
+export async function unpublish() { if (!uid) return; clearTimeout(pubTimer); pubPending = null; await deleteDoc(doc(db, 'public', uid)); }
+export async function findByCode(code) {
+  const q = query(collection(db, 'public'), where('code', '==', code), limit(1)); const r = await getDocs(q);
+  let out = null; r.forEach((d) => { out = { uid: d.id, data: d.data() }; }); return out;
+}
+export async function getPublic(id) { const d = await getDoc(doc(db, 'public', id)); return d.exists() ? { uid: d.id, data: d.data() } : null; }
+export async function randomPublic(exclude = []) {
+  const r = await getDocs(query(collection(db, 'public'), orderBy('updated', 'desc'), limit(40)));
+  const list = []; r.forEach((d) => { if (d.id !== uid && !exclude.includes(d.id)) list.push({ uid: d.id, data: d.data() }); });
+  return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+}
+export const dayNo = () => Math.floor(Date.now() / 86400000);
+// one heart per visitor, per aquarium, per (UTC) day — enforced by the security rules
+export async function sendHeart(owner) {
+  if (!uid || owner === uid) return 'self';
+  const ref = doc(db, 'public', owner, 'hearts', uid + '_' + dayNo());
+  try { const ex = await getDoc(ref); if (ex.exists()) return 'already'; } catch (_) {}
+  try { await setDoc(ref, { from: uid, day: dayNo(), at: serverTimestamp() }); return 'ok'; }
+  catch (e) { return e.code === 'permission-denied' ? 'already' : 'error'; }
+}
+export async function heartCount(owner) { try { const c = await getCountFromServer(collection(db, 'public', owner, 'hearts')); return c.data().count; } catch (e) { return null; } }

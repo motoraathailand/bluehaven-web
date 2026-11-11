@@ -7,7 +7,7 @@
 <title>BLUE HAVEN — 나만의 심해 정원</title>
 <meta name="description" content="BLUE HAVEN — a calm, softly glowing deep-sea garden. Play gentle minigames, gather pearls and grow your own deep sea. By MOTOR AA.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23040b1e'/%3E%3Cpath d='M14 34c8-10 22-10 30 0-8 10-22 10-30 0z' fill='%237ff8ff'/%3E%3Cpath d='M44 34l8-7v14z' fill='%237ff8ff'/%3E%3Ccircle cx='22' cy='32' r='2' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css?v=r4">
+<link rel="stylesheet" href="style.css?v=r5">
 <script type="importmap">
 { "imports": { "three": "./vendor/three/build/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/" } }
 </script>
@@ -33,6 +33,37 @@
   <button id="stopFollow" class="mini" data-i18n-aria="stopFollow"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg><span data-i18n="stopFollow"></span></button></div>
 
 <div id="hint" class="hidden"></div>
+<!-- r5: side rail -->
+<div id="rail">
+  <button id="railDex" class="rbtn" data-i18n-aria="dex"><svg viewBox="0 0 24 24" class="ic"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/><path d="M12 6v13.5"/></svg><span data-i18n="dex"></span></button>
+  <button id="railQuest" class="rbtn" data-i18n-aria="quests"><svg viewBox="0 0 24 24" class="ic"><rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M8 9l1.5 1.5L12 8M8 15l1.5 1.5L12 14M14 9.5h3M14 15.5h3"/></svg><span data-i18n="quests"></span></button>
+  <button id="railEv" class="rbtn" data-i18n-aria="events"><svg viewBox="0 0 24 24" class="ic"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.6" fill="currentColor"/></svg><span data-i18n="events"></span></button>
+  <button id="railVisit" class="rbtn" data-i18n-aria="visitTab"><svg viewBox="0 0 24 24" class="ic"><path d="M3 11l5-4 5 4v8H3z"/><path d="M13 13l4-3 4 3v6h-8"/><path d="M7 19v-4h2v4"/></svg><span data-i18n="visitTab"></span></button>
+  <button id="railPhoto" class="rbtn" data-i18n-aria="photo"><svg viewBox="0 0 24 24" class="ic"><path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.6"/></svg><span data-i18n="photo"></span></button>
+  <button id="railSleep" class="rbtn" data-i18n-aria="sleep"><svg viewBox="0 0 24 24" class="ic"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/></svg><span data-i18n="sleep"></span></button>
+</div>
+<div id="evBanner" class="hidden"><span class="evDot"></span><span id="evText"></span><button id="evWatch" class="mini"><span data-i18n="evWatchBtn"></span></button></div>
+<div id="care" class="hidden">
+  <div class="cTop"><b id="careName"></b><button id="careNameBtn" class="mini"><svg viewBox="0 0 24 24" class="ic"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg><span data-i18n="nameIt"></span></button></div>
+  <div class="cBond"><div class="bbar"><i id="careBar"></i></div><span id="careBond"></span></div>
+  <div class="row left"><button id="careFeed" class="cta small"><svg viewBox="0 0 24 24" class="ic"><circle cx="8" cy="9" r="1.6"/><circle cx="13" cy="6.5" r="1.4"/><circle cx="16" cy="11" r="1.8"/><path d="M4 16c4 5 12 5 16 0"/></svg><span data-i18n="feed"></span></button>
+    <button id="carePet" class="cta small ghost"><svg viewBox="0 0 24 24" class="ic"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span data-i18n="pet"></span></button>
+    <button id="careDex" class="mini"><svg viewBox="0 0 24 24" class="ic"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/></svg><span data-i18n="dex"></span></button></div>
+  <div class="cHint" data-i18n="petHint"></div>
+</div>
+<div id="visitBar" class="hidden"><span id="visitNick"></span><button id="visitHeart" class="pill"><span id="visitHearts">♥</span></button><button id="visitHome" class="pill"><svg viewBox="0 0 24 24" class="ic"><path d="M4 11l8-6 8 6v9H4z"/></svg><span data-i18n="goHome"></span></button></div>
+<div id="photoUI" class="hidden">
+  <button id="photoExit" class="mini close" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <div class="camSlider"><input type="range" id="camUp" min="1" max="20" step="0.1" value="5.5" aria-label="height"></div>
+  <div class="photoBottom"><div id="filterChips" class="chips"></div><button id="shutter" data-i18n-aria="photo"><i></i></button><div class="pHint" data-i18n="photoHint"></div></div>
+  <div id="photoPrev" class="hidden"><img id="photoImg" alt=""><div class="row"><button id="photoSave" class="cta small"><svg viewBox="0 0 24 24" class="ic"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-i18n="savePhoto"></span></button>
+    <button id="photoShare" class="cta small ghost"><svg viewBox="0 0 24 24" class="ic"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 11l7.6-3.8M8.2 13l7.6 3.8"/></svg><span data-i18n="share"></span></button>
+    <button id="photoClosePrev" class="mini close" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>
+</div>
+<div id="flash"></div>
+<div id="sleepDim"></div>
+<div id="sleepUI" class="hidden"><div class="moon"></div><div id="sleepTime"></div><div class="sTitle" data-i18n="sleepTitle"></div><div id="sleepChips" class="chips"></div>
+  <button id="sleepExit" class="cta ghost small"><span data-i18n="wake"></span></button><p class="sHint" data-i18n="sleepHint"></p></div>
 <div id="toast" class="hidden"><div class="t1"></div><div class="t2"></div></div>
 
 <div id="dock" class="hidden">
@@ -68,8 +99,10 @@
   <div class="sheetCard">
     <div class="sheetHead"><h3 data-i18n="grow"></h3><div class="pill pearl small"><span class="pearlDot"></span><b class="pearlMirror">0</b></div><button class="mini close" data-close="shopPanel" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="tabs"><button class="tab on" data-tab="life"><svg viewBox="0 0 24 24" class="ic"><path d="M3 12c4-5 11-5 15 0-4 5-11 5-15 0z"/><path d="M18 12l3.5-3v6z"/></svg><span data-i18n="tabLife"></span></button>
-      <button class="tab" data-tab="decor"><svg viewBox="0 0 24 24" class="ic"><path d="M12 21v-8M12 13c-3 0-5-2-5-5M12 13c3 0 5-2 5-5M12 9V4M7 8V5M17 8V5"/></svg><span data-i18n="tabDecor"></span></button></div>
+      <button class="tab" data-tab="decor"><svg viewBox="0 0 24 24" class="ic"><path d="M12 21v-8M12 13c-3 0-5-2-5-5M12 13c3 0 5-2 5-5M12 9V4M7 8V5M17 8V5"/></svg><span data-i18n="tabDecor"></span></button>
+      <button class="tab" data-tab="sets"><svg viewBox="0 0 24 24" class="ic"><path d="M12 3l2.4 5 5.6.6-4.2 3.8 1.2 5.6L12 15.2 7 18l1.2-5.6L4 8.6 9.6 8z"/></svg><span data-i18n="tabSets"></span></button></div>
     <div id="shopGrid" class="grid"></div>
+    <div id="shopExtra" class="hidden"></div>
   </div>
 </div>
 
@@ -99,6 +132,7 @@
         <button id="deleteBtn" class="mini wide danger"><svg viewBox="0 0 24 24" class="ic"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg><span data-i18n="deleteAcc"></span></button></div></div>
     <div class="setSec"><div class="setLbl" data-i18n="language"></div><div id="setLangs" class="chips"></div></div>
     <div class="setSec"><div class="setLbl" data-i18n="sound"></div><div id="setSound" class="chips"></div></div>
+    <div class="setSec"><div class="setLbl" data-i18n="bgm"></div><div id="setBgm" class="chips"></div></div>
     <p class="note" data-i18n="privacy"></p>
     <div class="note"><span data-i18n="provider"></span> · <span data-i18n="musicNote"></span></div>
   </div>
@@ -113,6 +147,29 @@
     </div>
   </div>
 </div>
+
+<!-- r5 sheets -->
+<div id="dexPanel" class="sheet hidden"><div class="sheetCard"><div class="sheetHead"><h3 data-i18n="dex"></h3><button class="mini close" data-close="dexPanel" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="dexHead"><span data-i18n="dexProgress"></span> <b id="dexProg"></b><div class="bbar"><i id="dexBar"></i></div></div>
+  <p class="note left" data-i18n="dexHow"></p><div id="dexGrid" class="dexGrid"></div></div></div>
+<div id="questPanel" class="sheet hidden"><div class="sheetCard"><div class="sheetHead"><h3 data-i18n="quests"></h3><button class="mini close" data-close="questPanel" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div id="questList" class="qlist"></div><div class="setLbl" data-i18n="idleTitle"></div><p id="idleInfo" class="note left"></p></div></div>
+<div id="eventPanel" class="sheet hidden"><div class="sheetCard"><div class="sheetHead"><h3 data-i18n="events"></h3><button class="mini close" data-close="eventPanel" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="evList"></div></div></div>
+<div id="visitPanel" class="sheet hidden"><div class="sheetCard"><div class="sheetHead"><h3 data-i18n="visitTab"></h3><button class="mini close" data-close="visitPanel" data-i18n-aria="close"><svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="setSec"><div class="setLbl" data-i18n="myAquarium"></div>
+    <div class="pubRow"><div><b data-i18n="pubLabel"></b><p id="pubState" class="note left"></p></div><button id="pubToggle" class="switch" role="switch" aria-checked="false"><i></i></button></div>
+    <div class="inRow"><input id="nickInput" maxlength="24" data-i18n-ph="nickPh"><button id="nickSave" class="mini"><span data-i18n="save"></span></button></div>
+    <div class="codeRow"><span data-i18n="myCode"></span><b id="myCode"></b><button id="copyCode" class="mini"><span data-i18n="shareCode"></span></button><span id="myHearts" class="hearts"></span></div></div>
+  <div class="setSec"><div class="setLbl" data-i18n="friends"></div>
+    <div class="inRow"><input id="friendInput" maxlength="12" autocapitalize="characters" data-i18n-ph="codePh"><button id="addFriendBtn" class="mini"><span data-i18n="addFriend"></span></button></div>
+    <div id="friendList"></div></div>
+  <button id="randomVisit" class="cta wide"><svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg><span data-i18n="randomVisit"></span></button>
+  <p class="note" data-i18n="visitNote"></p></div></div>
+<div id="idlePanel" class="sheet hidden"><div class="sheetCard center"><div class="bigPearl"></div><h3 data-i18n="idleTitle"></h3><p id="idleAway" class="delBody"></p>
+  <div class="earned"><b id="idleN">+0</b></div><p id="idleCap" class="note hidden" data-i18n="idleCapped"></p>
+  <div class="row"><button id="idleClaim" class="cta"><svg viewBox="0 0 24 24" class="ic"><path d="M5 13l4 4L19 7"/></svg><span data-i18n="collect"></span></button></div></div></div>
+<div id="namePanel" class="sheet hidden"><div class="sheetCard center"><h3 data-i18n="nameTitle"></h3><p id="nameFor" class="delBody"></p>
+  <div class="inRow"><input id="nameInput" maxlength="16" data-i18n-ph="namePh"></div><div class="row"><button id="nameSave" class="cta"><span data-i18n="save"></span></button></div></div></div>
 
 <div id="startScreen" class="screen">
   <div class="card">
@@ -132,6 +189,6 @@
   </div>
 </div>
 <div id="fade"></div>
-<script type="module" src="js/main.js?v=r4"></script>
+<script type="module" src="js/main.js?v=r5"></script>
 </body>
 </html>
